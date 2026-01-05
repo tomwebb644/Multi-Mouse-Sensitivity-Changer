@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -31,19 +34,15 @@ namespace MultiMouseSensitivityChanger
 
         static NotifyIcon _notifyIcon;
         static ContextMenuStrip _menu;
-        static ToolStripMenuItem _mouseSpeedMenu;
-        static ToolStripMenuItem _x8SpeedMenu;
         static ToolStripMenuItem _activeDeviceItem;
         static ToolStripMenuItem _startupItem;
 
-        static Icon _mouseIcon;
-        static Icon _x8Icon;
         static Icon _defaultIcon;
+        static readonly Dictionary<string, Icon> _deviceIcons = new Dictionary<string, Icon>(StringComparer.OrdinalIgnoreCase);
 
-        static string _activeDeviceKey = string.Empty;
+        static string _activeDevicePath = string.Empty;
 
-        const string X8_KEY = "X8";
-        const string MOUSE_KEY = "Mouse";
+        static readonly List<DeviceProfile> _devices = new List<DeviceProfile>();
 
         [STAThread]
         static void Main()
@@ -58,29 +57,25 @@ namespace MultiMouseSensitivityChanger
             if (string.IsNullOrEmpty(devicePath))
                 return;
 
-            string deviceKey =
-                devicePath.Equals(X8_DEVICE_PATH, StringComparison.OrdinalIgnoreCase) ? X8_KEY :
-                devicePath.Equals(MOUSE_DEVICE_PATH, StringComparison.OrdinalIgnoreCase) ? MOUSE_KEY :
-                string.Empty;
-
-            if (string.IsNullOrEmpty(deviceKey))
+            var device = _devices.FirstOrDefault(d => d.DevicePath.Equals(devicePath, StringComparison.OrdinalIgnoreCase));
+            if (device == null)
                 return;
 
-            int targetSpeed = deviceKey == X8_KEY ? X8_SPEED : MOUSE_SPEED;
+            int targetSpeed = device.Speed;
             long now = _sw.ElapsedMilliseconds;
             if (targetSpeed != _lastSpeed && (now - _lastSwitchMs) >= MIN_SWITCH_MS)
             {
                 NativeMethods.SetMouseSpeed(targetSpeed);
                 _lastSpeed = targetSpeed;
                 _lastSwitchMs = now;
-                UpdateActiveDevice(deviceKey, targetSpeed);
+                UpdateActiveDevice(device, targetSpeed);
             }
         }
 
         static void LoadSpeedSettings()
         {
-            MOUSE_SPEED = ReadSpeed(MOUSE_KEY, MOUSE_SPEED);
-            X8_SPEED = ReadSpeed(X8_KEY, X8_SPEED);
+            MOUSE_SPEED = ReadSpeed("Mouse", MOUSE_SPEED);
+            X8_SPEED = ReadSpeed("X8", X8_SPEED);
         }
 
         static int ReadSpeed(string deviceKey, int defaultValue)
@@ -99,14 +94,6 @@ namespace MultiMouseSensitivityChanger
             return defaultValue;
         }
 
-        static void SaveSpeed(string deviceKey, int speed)
-        {
-            using (RegistryKey key = Registry.CurrentUser.CreateSubKey(SettingsKeyPath))
-            {
-                key.SetValue(deviceKey, ClampSpeed(speed, speed), RegistryValueKind.DWord);
-            }
-        }
-
         static int ClampSpeed(int speed, int fallback)
         {
             if (speed < 1 || speed > 20)
@@ -115,48 +102,54 @@ namespace MultiMouseSensitivityChanger
             return speed;
         }
 
-        static void UpdateActiveDevice(string deviceKey, int speed)
+        static void UpdateActiveDevice(DeviceProfile device, int speed)
         {
-            _activeDeviceKey = deviceKey;
-            _activeDeviceItem.Text = deviceKey == X8_KEY
-                ? $"Active: X8 (speed {speed})"
-                : $"Active: Mouse (speed {speed})";
+            _activeDevicePath = device.DevicePath;
+            _activeDeviceItem.Text = $"Active: {device.Name} (speed {speed})";
 
-            if (deviceKey == X8_KEY)
-            {
-                _notifyIcon.Icon = _x8Icon;
-                _notifyIcon.Text = "X8 speed " + speed;
-            }
-            else
-            {
-                _notifyIcon.Icon = _mouseIcon;
-                _notifyIcon.Text = "Mouse speed " + speed;
-            }
+            _notifyIcon.Icon = GetDeviceIcon(device);
+            _notifyIcon.Text = device.Name + " speed " + speed;
         }
 
         static void InitializeTrayIcon()
         {
-            _mouseIcon = CreateIcon(Color.DodgerBlue, "M");
-            _x8Icon = CreateIcon(Color.MediumPurple, "X8");
             _defaultIcon = CreateIcon(Color.Gray, "MM");
 
+            RebuildContextMenu();
+
+            _notifyIcon = new NotifyIcon
+            {
+                Visible = true,
+                Icon = _defaultIcon,
+                Text = "Multi-Mouse Sensitivity Changer",
+                ContextMenuStrip = _menu
+            };
+        }
+
+        static void RebuildContextMenu()
+        {
+            _menu?.Dispose();
             _menu = new ContextMenuStrip();
+            foreach (var icon in _deviceIcons.Values)
+            {
+                icon.Dispose();
+            }
+            _deviceIcons.Clear();
+
             _activeDeviceItem = new ToolStripMenuItem("Active: none") { Enabled = false };
             _menu.Items.Add(_activeDeviceItem);
             _menu.Items.Add(new ToolStripSeparator());
 
-            _mouseSpeedMenu = BuildSpeedMenu("Mouse Speed", MOUSE_KEY);
-            _x8SpeedMenu = BuildSpeedMenu("X8 Speed", X8_KEY);
+            foreach (DeviceProfile device in _devices)
+            {
+                _menu.Items.Add(BuildSpeedMenu(device));
+                _menu.Items.Add(new ToolStripMenuItem(device.DevicePath) { Enabled = false });
+                _menu.Items.Add(new ToolStripSeparator());
+            }
 
-            _menu.Items.Add(_mouseSpeedMenu);
-            _menu.Items.Add(_x8SpeedMenu);
-            _menu.Items.Add(new ToolStripSeparator());
-
-            _menu.Items.Add(new ToolStripMenuItem("Mouse device path") { Enabled = false, ToolTipText = MOUSE_DEVICE_PATH });
-            _menu.Items.Add(new ToolStripMenuItem(MOUSE_DEVICE_PATH) { Enabled = false });
-            _menu.Items.Add(new ToolStripSeparator());
-            _menu.Items.Add(new ToolStripMenuItem("X8 device path") { Enabled = false, ToolTipText = X8_DEVICE_PATH });
-            _menu.Items.Add(new ToolStripMenuItem(X8_DEVICE_PATH) { Enabled = false });
+            var addDeviceItem = new ToolStripMenuItem("Add device...");
+            addDeviceItem.Click += (_, __) => ShowAddDeviceWizard();
+            _menu.Items.Add(addDeviceItem);
             _menu.Items.Add(new ToolStripSeparator());
 
             _startupItem = new ToolStripMenuItem("Start with Windows")
@@ -172,24 +165,19 @@ namespace MultiMouseSensitivityChanger
             exitItem.Click += (_, __) => Application.Exit();
             _menu.Items.Add(exitItem);
 
-            _notifyIcon = new NotifyIcon
-            {
-                Visible = true,
-                Icon = _defaultIcon,
-                Text = "Multi-Mouse Sensitivity Changer",
-                ContextMenuStrip = _menu
-            };
+            if (_notifyIcon != null)
+                _notifyIcon.ContextMenuStrip = _menu;
         }
 
-        static ToolStripMenuItem BuildSpeedMenu(string label, string deviceKey)
+        static ToolStripMenuItem BuildSpeedMenu(DeviceProfile device)
         {
-            var menu = new ToolStripMenuItem(label);
+            var menu = new ToolStripMenuItem(device.Name + " Speed");
             for (int i = 1; i <= 20; i++)
             {
                 var item = new ToolStripMenuItem(i.ToString())
                 {
-                    Tag = new SpeedTag(deviceKey, i),
-                    Checked = (deviceKey == MOUSE_KEY && i == MOUSE_SPEED) || (deviceKey == X8_KEY && i == X8_SPEED)
+                    Tag = new SpeedTag(device, i),
+                    Checked = i == device.Speed
                 };
                 item.Click += OnSpeedMenuClick;
                 menu.DropDownItems.Add(item);
@@ -201,24 +189,15 @@ namespace MultiMouseSensitivityChanger
         {
             if (sender is ToolStripMenuItem item && item.Tag is SpeedTag tag)
             {
-                if (tag.DeviceKey == MOUSE_KEY)
-                {
-                    MOUSE_SPEED = tag.Speed;
-                    SaveSpeed(MOUSE_KEY, MOUSE_SPEED);
-                    UpdateMenuChecks(_mouseSpeedMenu, tag.Speed);
-                }
-                else if (tag.DeviceKey == X8_KEY)
-                {
-                    X8_SPEED = tag.Speed;
-                    SaveSpeed(X8_KEY, X8_SPEED);
-                    UpdateMenuChecks(_x8SpeedMenu, tag.Speed);
-                }
+                tag.Device.Speed = tag.Speed;
+                DeviceRepository.SaveDevices(_devices);
+                UpdateMenuChecks(item.OwnerItem as ToolStripMenuItem, tag.Speed);
 
-                if (_activeDeviceKey == tag.DeviceKey)
+                if (_activeDevicePath == tag.Device.DevicePath)
                 {
                     NativeMethods.SetMouseSpeed(tag.Speed);
                     _lastSpeed = tag.Speed;
-                    UpdateActiveDevice(tag.DeviceKey, tag.Speed);
+                    UpdateActiveDevice(tag.Device, tag.Speed);
                 }
             }
         }
@@ -270,6 +249,24 @@ namespace MultiMouseSensitivityChanger
             }
         }
 
+        static Icon GetDeviceIcon(DeviceProfile device)
+        {
+            if (_deviceIcons.TryGetValue(device.DevicePath, out Icon existing))
+                return existing;
+
+            Color[] palette = new[]
+            {
+                Color.DodgerBlue, Color.MediumPurple, Color.SeaGreen, Color.OrangeRed, Color.Goldenrod,
+                Color.CadetBlue, Color.SlateBlue, Color.Teal, Color.SandyBrown
+            };
+
+            int colorIndex = Math.Abs(device.DevicePath.GetHashCode()) % palette.Length;
+            string label = new string(device.Name.Take(3).ToArray());
+            var icon = CreateIcon(palette[colorIndex], label);
+            _deviceIcons[device.DevicePath] = icon;
+            return icon;
+        }
+
         class TrayApplicationContext : ApplicationContext
         {
             readonly RawInputWindow _window;
@@ -277,6 +274,7 @@ namespace MultiMouseSensitivityChanger
             public TrayApplicationContext()
             {
                 LoadSpeedSettings();
+                DeviceRepository.LoadDevices(_devices, MOUSE_SPEED, X8_SPEED, MOUSE_DEVICE_PATH, X8_DEVICE_PATH);
                 InitializeTrayIcon();
                 _window = new RawInputWindow(OnDeviceChanged);
             }
@@ -287,13 +285,43 @@ namespace MultiMouseSensitivityChanger
                 {
                     _notifyIcon?.Dispose();
                     _menu?.Dispose();
-                    _mouseIcon?.Dispose();
-                    _x8Icon?.Dispose();
                     _defaultIcon?.Dispose();
                     _window?.Dispose();
+                    foreach (var icon in _deviceIcons.Values)
+                    {
+                        icon.Dispose();
+                    }
                 }
                 base.Dispose(disposing);
             }
+        }
+
+        static void ShowAddDeviceWizard()
+        {
+            using (var form = new AddDeviceForm(_devices.Select(d => d.DevicePath)))
+            {
+                if (form.ShowDialog() == DialogResult.OK && form.CreatedDevice != null)
+                {
+                    AddOrUpdateDevice(form.CreatedDevice);
+                }
+            }
+        }
+
+        static void AddOrUpdateDevice(DeviceProfile newDevice)
+        {
+            var existing = _devices.FirstOrDefault(d => d.DevicePath.Equals(newDevice.DevicePath, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                existing.Name = newDevice.Name;
+                existing.Speed = newDevice.Speed;
+            }
+            else
+            {
+                _devices.Add(newDevice);
+            }
+
+            DeviceRepository.SaveDevices(_devices);
+            RebuildContextMenu();
         }
 
         class RawInputWindow : NativeWindow, IDisposable
@@ -389,13 +417,323 @@ namespace MultiMouseSensitivityChanger
 
         class SpeedTag
         {
-            public string DeviceKey { get; }
+            public DeviceProfile Device { get; }
             public int Speed { get; }
 
-            public SpeedTag(string deviceKey, int speed)
+            public SpeedTag(DeviceProfile device, int speed)
             {
-                DeviceKey = deviceKey;
+                Device = device;
                 Speed = speed;
+            }
+        }
+
+        class DeviceProfile
+        {
+            public string Name { get; set; }
+            public string DevicePath { get; set; }
+            public int Speed { get; set; }
+        }
+
+        static class DeviceRepository
+        {
+            const string DevicesValueName = "Devices";
+
+            public static void LoadDevices(List<DeviceProfile> devices, int defaultMouseSpeed, int defaultX8Speed, string defaultMousePath, string defaultX8Path)
+            {
+                devices.Clear();
+
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(SettingsKeyPath, false))
+                {
+                    if (key != null)
+                    {
+                        object value = key.GetValue(DevicesValueName);
+                        if (value is string[] entries && entries.Length > 0)
+                        {
+                            foreach (string entry in entries)
+                            {
+                                if (TryParse(entry, out DeviceProfile device))
+                                    devices.Add(device);
+                            }
+                        }
+                    }
+                }
+
+                if (devices.Count == 0)
+                {
+                    devices.Add(new DeviceProfile { Name = "Mouse", DevicePath = defaultMousePath, Speed = defaultMouseSpeed });
+                    devices.Add(new DeviceProfile { Name = "X8", DevicePath = defaultX8Path, Speed = defaultX8Speed });
+                }
+            }
+
+            public static void SaveDevices(IEnumerable<DeviceProfile> devices)
+            {
+                var entries = devices
+                    .Select(d => Serialize(d))
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .ToArray();
+
+                using (RegistryKey key = Registry.CurrentUser.CreateSubKey(SettingsKeyPath))
+                {
+                    key.SetValue(DevicesValueName, entries, RegistryValueKind.MultiString);
+                }
+            }
+
+            static string Serialize(DeviceProfile device)
+            {
+                if (string.IsNullOrEmpty(device.DevicePath) || string.IsNullOrEmpty(device.Name))
+                    return string.Empty;
+
+                string Encode(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
+                return string.Join("|", new[] { Encode(device.Name), Encode(device.DevicePath), device.Speed.ToString() });
+            }
+
+            static bool TryParse(string entry, out DeviceProfile device)
+            {
+                device = null;
+                if (string.IsNullOrEmpty(entry))
+                    return false;
+
+                string[] parts = entry.Split('|');
+                if (parts.Length != 3)
+                    return false;
+
+                string Decode(string value)
+                {
+                    try
+                    {
+                        return Encoding.UTF8.GetString(Convert.FromBase64String(value));
+                    }
+                    catch
+                    {
+                        return string.Empty;
+                    }
+                }
+
+                if (!int.TryParse(parts[2], out int speed))
+                    return false;
+
+                device = new DeviceProfile
+                {
+                    Name = Decode(parts[0]),
+                    DevicePath = Decode(parts[1]),
+                    Speed = ClampSpeed(speed, speed)
+                };
+
+                return !string.IsNullOrEmpty(device.Name) && !string.IsNullOrEmpty(device.DevicePath);
+            }
+        }
+
+        class AddDeviceForm : Form
+        {
+            readonly Label _captureLabel;
+            readonly TextBox _nameBox;
+            readonly TextBox _pathBox;
+            readonly NumericUpDown _speedUpDown;
+            readonly Button _listenButton;
+            readonly Button _testButton;
+            readonly HashSet<string> _existingPaths;
+            RawInputWindow _listener;
+
+            public DeviceProfile CreatedDevice { get; private set; }
+
+            public AddDeviceForm(IEnumerable<string> existingPaths)
+            {
+                _existingPaths = new HashSet<string>(existingPaths ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+
+                Text = "Add Device";
+                FormBorderStyle = FormBorderStyle.FixedDialog;
+                MaximizeBox = false;
+                MinimizeBox = false;
+                StartPosition = FormStartPosition.CenterScreen;
+                ClientSize = new Size(420, 260);
+
+                var step1Label = new Label
+                {
+                    Text = "Step 1: Listen for device movement to capture its path.",
+                    AutoSize = true,
+                    Location = new Point(12, 12)
+                };
+
+                _captureLabel = new Label
+                {
+                    Text = "Listening is off.",
+                    AutoSize = true,
+                    Location = new Point(12, 40)
+                };
+
+                _listenButton = new Button
+                {
+                    Text = "Start listening",
+                    Location = new Point(12, 65),
+                    Size = new Size(120, 28)
+                };
+                _listenButton.Click += (_, __) => ToggleListening();
+
+                var pathLabel = new Label
+                {
+                    Text = "Captured device path:",
+                    AutoSize = true,
+                    Location = new Point(12, 105)
+                };
+
+                _pathBox = new TextBox
+                {
+                    ReadOnly = true,
+                    Location = new Point(15, 125),
+                    Width = 380
+                };
+
+                var nameLabel = new Label
+                {
+                    Text = "Step 2: Name the device:",
+                    AutoSize = true,
+                    Location = new Point(12, 155)
+                };
+
+                _nameBox = new TextBox
+                {
+                    Location = new Point(15, 175),
+                    Width = 200
+                };
+
+                var speedLabel = new Label
+                {
+                    Text = "Step 3: Choose a default speed (1-20):",
+                    AutoSize = true,
+                    Location = new Point(230, 155)
+                };
+
+                _speedUpDown = new NumericUpDown
+                {
+                    Minimum = 1,
+                    Maximum = 20,
+                    Value = 10,
+                    Location = new Point(233, 175),
+                    Width = 60
+                };
+
+                _testButton = new Button
+                {
+                    Text = "Test speed",
+                    Location = new Point(305, 172),
+                    Size = new Size(90, 28)
+                };
+                _testButton.Click += (_, __) => NativeMethods.SetMouseSpeed((int)_speedUpDown.Value);
+
+                var instructions = new Label
+                {
+                    Text = "Step 4: Click OK to save. You can move the device to test switching.",
+                    AutoSize = true,
+                    Location = new Point(12, 205)
+                };
+
+                var okButton = new Button
+                {
+                    Text = "OK",
+                    DialogResult = DialogResult.OK,
+                    Location = new Point(240, 225),
+                    Size = new Size(75, 25)
+                };
+                okButton.Click += OnOkClicked;
+
+                var cancelButton = new Button
+                {
+                    Text = "Cancel",
+                    DialogResult = DialogResult.Cancel,
+                    Location = new Point(320, 225),
+                    Size = new Size(75, 25)
+                };
+
+                Controls.Add(step1Label);
+                Controls.Add(_captureLabel);
+                Controls.Add(_listenButton);
+                Controls.Add(pathLabel);
+                Controls.Add(_pathBox);
+                Controls.Add(nameLabel);
+                Controls.Add(_nameBox);
+                Controls.Add(speedLabel);
+                Controls.Add(_speedUpDown);
+                Controls.Add(_testButton);
+                Controls.Add(instructions);
+                Controls.Add(okButton);
+                Controls.Add(cancelButton);
+
+                AcceptButton = okButton;
+                CancelButton = cancelButton;
+            }
+
+            void ToggleListening()
+            {
+                if (_listener == null)
+                {
+                    _listener = new RawInputWindow(OnDeviceCaptured);
+                    _captureLabel.Text = "Listening... move the target mouse.";
+                    _listenButton.Text = "Stop listening";
+                }
+                else
+                {
+                    _listener.Dispose();
+                    _listener = null;
+                    _captureLabel.Text = "Listening is off.";
+                    _listenButton.Text = "Start listening";
+                }
+            }
+
+            void OnDeviceCaptured(string path)
+            {
+                if (string.IsNullOrEmpty(path))
+                    return;
+
+                BeginInvoke(new Action(() =>
+                {
+                    if (_existingPaths.Contains(path))
+                    {
+                        _captureLabel.Text = "Device already added; captured existing path.";
+                    }
+                    else
+                    {
+                        _captureLabel.Text = "Captured new device path.";
+                    }
+
+                    _pathBox.Text = path;
+                    if (string.IsNullOrWhiteSpace(_nameBox.Text))
+                    {
+                        _nameBox.Text = "Mouse " + (_existingPaths.Count + 1);
+                    }
+                }));
+            }
+
+            void OnOkClicked(object sender, EventArgs e)
+            {
+                if (string.IsNullOrWhiteSpace(_pathBox.Text))
+                {
+                    MessageBox.Show("Please capture a device by listening and moving it first.", "Device required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    DialogResult = DialogResult.None;
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(_nameBox.Text))
+                {
+                    MessageBox.Show("Please provide a device name.", "Name required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    DialogResult = DialogResult.None;
+                    return;
+                }
+
+                CreatedDevice = new DeviceProfile
+                {
+                    Name = _nameBox.Text.Trim(),
+                    DevicePath = _pathBox.Text.Trim(),
+                    Speed = (int)_speedUpDown.Value
+                };
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing)
+                {
+                    _listener?.Dispose();
+                }
+                base.Dispose(disposing);
             }
         }
 
