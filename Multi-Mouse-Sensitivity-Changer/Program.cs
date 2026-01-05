@@ -34,6 +34,7 @@ namespace MultiMouseSensitivityChanger
         static string _activeDeviceKey = string.Empty;
 
         static readonly List<DeviceProfile> _deviceProfiles = new List<DeviceProfile>();
+        static RawInputWindow _rawInputWindow;
 
         [STAThread]
         static void Main()
@@ -311,6 +312,8 @@ namespace MultiMouseSensitivityChanger
                     RebuildContextMenu();
                 }
             }
+
+            EnsureRawInputRegistration();
         }
 
         static void ShowManageDevicesDialog()
@@ -411,13 +414,11 @@ namespace MultiMouseSensitivityChanger
 
         class TrayApplicationContext : ApplicationContext
         {
-            readonly RawInputWindow _window;
-
             public TrayApplicationContext()
             {
                 InitializeDevices();
                 InitializeTrayIcon();
-                _window = new RawInputWindow(OnDeviceChanged);
+                _rawInputWindow = new RawInputWindow(OnDeviceChanged);
             }
 
             protected override void Dispose(bool disposing)
@@ -428,7 +429,7 @@ namespace MultiMouseSensitivityChanger
                     _menu?.Dispose();
                     _defaultIcon?.Dispose();
                     ClearProfileIcons();
-                    _window?.Dispose();
+                    _rawInputWindow?.Dispose();
                 }
                 base.Dispose(disposing);
             }
@@ -443,6 +444,11 @@ namespace MultiMouseSensitivityChanger
                 _deviceCallback = deviceCallback;
                 CreateHandle(new CreateParams());
 
+                RegisterForRawInput();
+            }
+
+            public void RegisterForRawInput()
+            {
                 RAWINPUTDEVICE[] rid = new[]
                 {
                     new RAWINPUTDEVICE
@@ -523,6 +529,11 @@ namespace MultiMouseSensitivityChanger
             {
                 DestroyHandle();
             }
+        }
+
+        public static void EnsureRawInputRegistration()
+        {
+            _rawInputWindow?.RegisterForRawInput();
         }
 
         class SpeedTag
