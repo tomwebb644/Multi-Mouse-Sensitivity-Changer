@@ -26,7 +26,6 @@ namespace MultiMouseSensitivityChanger
         static readonly Dictionary<string, ToolStripMenuItem> _speedMenus = new Dictionary<string, ToolStripMenuItem>(StringComparer.OrdinalIgnoreCase);
         static ToolStripMenuItem _activeDeviceItem;
         static ToolStripMenuItem _startupItem;
-        static ToolStripMenuItem _pathsMenu;
 
         static Icon _defaultIcon;
         static readonly Dictionary<string, Icon> _profileIcons = new Dictionary<string, Icon>(StringComparer.OrdinalIgnoreCase);
@@ -194,10 +193,6 @@ namespace MultiMouseSensitivityChanger
             }
 
             _menu.Items.Add(new ToolStripSeparator());
-            _pathsMenu = BuildPathsMenu();
-            _menu.Items.Add(_pathsMenu);
-
-            _menu.Items.Add(new ToolStripSeparator());
             var addDeviceItem = new ToolStripMenuItem("Add new device...");
             addDeviceItem.Click += (_, __) => ShowAddDeviceDialog();
             _menu.Items.Add(addDeviceItem);
@@ -267,33 +262,9 @@ namespace MultiMouseSensitivityChanger
             }
         }
 
-        static ToolStripMenuItem BuildPathsMenu()
-        {
-            var menu = new ToolStripMenuItem("Device paths") { Enabled = true };
-
-            if (_deviceProfiles.Count == 0)
-            {
-                menu.DropDownItems.Add(new ToolStripMenuItem("No devices configured") { Enabled = false });
-            }
-            else
-            {
-                foreach (var profile in _deviceProfiles)
-                {
-                    menu.DropDownItems.Add(new ToolStripMenuItem(profile.Name) { Enabled = false, ToolTipText = profile.DevicePath });
-                    menu.DropDownItems.Add(new ToolStripMenuItem(profile.DevicePath) { Enabled = false });
-                    menu.DropDownItems.Add(new ToolStripSeparator());
-                }
-
-                if (menu.DropDownItems.Count > 0 && menu.DropDownItems[menu.DropDownItems.Count - 1] is ToolStripSeparator)
-                    menu.DropDownItems.RemoveAt(menu.DropDownItems.Count - 1);
-            }
-
-            return menu;
-        }
-
         static void ShowAddDeviceDialog()
         {
-            using (var form = new AddDeviceForm())
+            using (var form = new AddDeviceForm(existingColors: _deviceProfiles.Select(p => p.IconColor)))
             {
                 if (form.ShowDialog() == DialogResult.OK && form.NewProfile != null)
                 {

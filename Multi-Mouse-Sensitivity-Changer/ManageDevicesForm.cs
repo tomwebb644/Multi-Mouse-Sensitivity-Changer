@@ -95,7 +95,7 @@ namespace MultiMouseSensitivityChanger
 
         void AddDevice()
         {
-            using (var form = new AddDeviceForm())
+            using (var form = new AddDeviceForm(existingColors: Devices.Select(d => d.IconColor)))
             {
                 if (form.ShowDialog() == DialogResult.OK && form.NewProfile != null)
                 {
@@ -114,7 +114,7 @@ namespace MultiMouseSensitivityChanger
             if (profile == null)
                 return;
 
-            using (var form = new AddDeviceForm(profile))
+            using (var form = new AddDeviceForm(profile, Devices.Where(d => !ReferenceEquals(d, profile)).Select(d => d.IconColor)))
             {
                 if (form.ShowDialog() == DialogResult.OK && form.NewProfile != null)
                 {

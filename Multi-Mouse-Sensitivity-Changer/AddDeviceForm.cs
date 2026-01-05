@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -17,7 +19,7 @@ namespace MultiMouseSensitivityChanger
 
         public Program.DeviceProfile NewProfile { get; private set; }
 
-        public AddDeviceForm(Program.DeviceProfile existing = null)
+        public AddDeviceForm(Program.DeviceProfile existing = null, IEnumerable<Color> existingColors = null)
         {
             Text = "Add new device";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -104,6 +106,11 @@ namespace MultiMouseSensitivityChanger
                 _colorPreview.BackColor = _selectedColor;
                 Text = "Edit device";
             }
+            else
+            {
+                _selectedColor = GetDefaultColor(existingColors);
+                _colorPreview.BackColor = _selectedColor;
+            }
         }
 
         void BeginCapture()
@@ -160,6 +167,25 @@ namespace MultiMouseSensitivityChanger
             }
 
             NewProfile = new Program.DeviceProfile(_nameTextBox.Text.Trim(), _pathTextBox.Text.Trim(), (int)_speedSelector.Value, _selectedColor);
+        }
+
+        Color GetDefaultColor(IEnumerable<Color> existingColors)
+        {
+            var palette = new List<Color>
+            {
+                Color.SteelBlue,
+                Color.ForestGreen,
+                Color.OrangeRed,
+                Color.SlateBlue,
+                Color.DarkCyan,
+                Color.Goldenrod,
+                Color.Crimson,
+                Color.Teal
+            };
+
+            var existingSet = new HashSet<Color>(existingColors ?? Enumerable.Empty<Color>());
+            var unused = palette.FirstOrDefault(c => !existingSet.Contains(c));
+            return unused == default ? palette[0] : unused;
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
