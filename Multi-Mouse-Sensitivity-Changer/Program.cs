@@ -1,4 +1,4 @@
-// Program.cs
+﻿// Program.cs
 // .NET Framework 4.7.2
 // Auto-switch Windows pointer speed based on which Raw Input mouse device last moved.
 
