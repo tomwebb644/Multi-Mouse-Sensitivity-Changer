@@ -26,19 +26,25 @@ namespace MultiMouseSensitivityChanger
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(420, 260);
+            AutoSize = true;
+            AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            MinimumSize = new Size(460, 0);
 
             var layout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
                 RowCount = 7,
-                Padding = new Padding(10),
+                Padding = new Padding(12),
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink
             };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
+            for (int i = 0; i < layout.RowCount; i++)
+            {
+                layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            }
 
             layout.Controls.Add(new Label { Text = "Step 1: Capture the device path", AutoSize = true }, 0, 0);
             _pathTextBox = new TextBox { Dock = DockStyle.Fill };
@@ -66,10 +72,10 @@ namespace MultiMouseSensitivityChanger
             layout.Controls.Add(testButton, 1, 4);
 
             layout.Controls.Add(new Label { Text = "Icon color", AutoSize = true }, 0, 5);
-            var colorButton = new Button { Text = "Choose color", Dock = DockStyle.Left };
+            var colorButton = new Button { Text = "Choose color", AutoSize = true };
             colorButton.Click += (_, __) => ChooseColor();
-            var colorPanel = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, Dock = DockStyle.Fill };
-            _colorPreview = new Panel { Width = 32, Height = 32, BackColor = _selectedColor, BorderStyle = BorderStyle.FixedSingle };
+            var colorPanel = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, Dock = DockStyle.Fill, WrapContents = false, AutoSize = true };
+            _colorPreview = new Panel { Width = 32, Height = 32, BackColor = _selectedColor, BorderStyle = BorderStyle.FixedSingle, Margin = new Padding(8, 0, 0, 0) };
             colorPanel.Controls.Add(colorButton);
             colorPanel.Controls.Add(_colorPreview);
             layout.Controls.Add(colorPanel, 1, 5);
@@ -82,7 +88,9 @@ namespace MultiMouseSensitivityChanger
             {
                 FlowDirection = FlowDirection.RightToLeft,
                 Dock = DockStyle.Bottom,
-                Padding = new Padding(10)
+                Padding = new Padding(12, 8, 12, 12),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink
             };
             var okButton = new Button { Text = "Save", DialogResult = DialogResult.OK, AutoSize = true };
             var cancelButton = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };

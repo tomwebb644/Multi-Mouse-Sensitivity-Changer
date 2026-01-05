@@ -20,7 +20,7 @@ namespace MultiMouseSensitivityChanger
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(720, 360);
+            ClientSize = new Size(720, 320);
 
             Devices = devices?.Select(CloneProfile).ToList() ?? new List<Program.DeviceProfile>();
 
@@ -50,17 +50,38 @@ namespace MultiMouseSensitivityChanger
 
             var buttons = new FlowLayoutPanel
             {
-                Dock = DockStyle.Bottom,
+                Dock = DockStyle.Fill,
                 FlowDirection = FlowDirection.RightToLeft,
-                Padding = new Padding(10)
+                Padding = new Padding(0),
+                AutoSize = true
             };
             buttons.Controls.Add(closeButton);
             buttons.Controls.Add(_removeButton);
             buttons.Controls.Add(_editButton);
             buttons.Controls.Add(addButton);
 
-            Controls.Add(_deviceList);
-            Controls.Add(buttons);
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 2,
+                Padding = new Padding(12)
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.Controls.Add(_deviceList, 0, 0);
+            var buttonsContainer = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.RightToLeft,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = new Padding(0, 8, 0, 0)
+            };
+            buttonsContainer.Controls.Add(buttons);
+            layout.Controls.Add(buttonsContainer, 0, 1);
+
+            Controls.Add(layout);
 
             AcceptButton = closeButton;
             CancelButton = closeButton;
