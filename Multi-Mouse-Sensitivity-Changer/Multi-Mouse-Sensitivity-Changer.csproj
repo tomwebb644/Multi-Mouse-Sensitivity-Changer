@@ -4,10 +4,10 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{2765C01E-58CE-45B1-A485-A34A26CA5738}</ProjectGuid>
+    <ProjectGuid>{87380E48-ADE0-4148-861D-FEB5BBFBB115}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>MouseDeviceIdentifier</RootNamespace>
-    <AssemblyName>MouseDeviceIdentifier</AssemblyName>
+    <RootNamespace>Multi_Mouse_Sensitivity_Changer</RootNamespace>
+    <AssemblyName>Multi-Mouse-Sensitivity-Changer</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>

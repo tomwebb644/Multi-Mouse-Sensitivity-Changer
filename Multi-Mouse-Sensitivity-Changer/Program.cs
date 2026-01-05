@@ -12,7 +12,7 @@ class Program
     static string X8_DEVICE_PATH =
     @"\\?\HID#VID_1997&PID_2433&MI_01&Col01#9&354159c2&0&0000#{378de44c-56ef-11d1-bc8c-00a0c91405dd}";
 
-    static string MOUSE_DEVICE_PATH = 
+    static string MOUSE_DEVICE_PATH =
     @"\\?\HID#VID_046D&PID_C539&MI_01&Col01#8&10c9e4b2&0&0000#{378de44c-56ef-11d1-bc8c-00a0c91405dd}";
 
     static int X8_SPEED = 20;    // 1..20

@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.10.35004.147
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MouseDeviceIdentifier", "MouseDeviceIdentifier\MouseDeviceIdentifier.csproj", "{2765C01E-58CE-45B1-A485-A34A26CA5738}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Multi-Mouse-Sensitivity-Changer", "Multi-Mouse-Sensitivity-Changer\Multi-Mouse-Sensitivity-Changer.csproj", "{87380E48-ADE0-4148-861D-FEB5BBFBB115}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,15 +11,15 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{2765C01E-58CE-45B1-A485-A34A26CA5738}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2765C01E-58CE-45B1-A485-A34A26CA5738}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2765C01E-58CE-45B1-A485-A34A26CA5738}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2765C01E-58CE-45B1-A485-A34A26CA5738}.Release|Any CPU.Build.0 = Release|Any CPU
+		{87380E48-ADE0-4148-861D-FEB5BBFBB115}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{87380E48-ADE0-4148-861D-FEB5BBFBB115}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{87380E48-ADE0-4148-861D-FEB5BBFBB115}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{87380E48-ADE0-4148-861D-FEB5BBFBB115}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {AFAF4451-9440-494F-88FE-E25EC047FBD1}
+		SolutionGuid = {34FBDAB4-99BD-4B21-BEE0-B924403CB8A6}
 	EndGlobalSection
 EndGlobal
