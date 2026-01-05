@@ -11,12 +11,18 @@ namespace MultiMouseSensitivityChanger
         readonly TextBox _pathTextBox;
         readonly NumericUpDown _speedSelector;
         readonly Label _statusLabel;
+        readonly Button _colorButton;
+        readonly Func<string, bool> _nameExists;
+        readonly string _originalName;
+        Color _iconColor = Color.Gray;
         RawInputCaptureWindow _captureWindow;
 
         public Program.DeviceProfile NewProfile { get; private set; }
 
-        public AddDeviceForm()
+        public AddDeviceForm(Program.DeviceProfile existing = null, Func<string, bool> nameExists = null)
         {
+            _nameExists = nameExists;
+            _originalName = existing?.Name;
             Text = "Add new device";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -28,7 +34,7 @@ namespace MultiMouseSensitivityChanger
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 6,
+                RowCount = 7,
                 Padding = new Padding(10),
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink
@@ -61,8 +67,13 @@ namespace MultiMouseSensitivityChanger
             testButton.Click += (_, __) => TestSpeed();
             layout.Controls.Add(testButton, 1, 4);
 
+            layout.Controls.Add(new Label { Text = "Step 4: Icon color", AutoSize = true }, 0, 5);
+            _colorButton = new Button { Text = "Pick color", Dock = DockStyle.Left, BackColor = _iconColor };
+            _colorButton.Click += (_, __) => ChooseColor();
+            layout.Controls.Add(_colorButton, 1, 5);
+
             _statusLabel = new Label { Text = "Move your device to capture its path.", AutoSize = true, ForeColor = Color.DimGray };
-            layout.Controls.Add(_statusLabel, 0, 5);
+            layout.Controls.Add(_statusLabel, 0, 6);
             layout.SetColumnSpan(_statusLabel, 2);
 
             var buttons = new FlowLayoutPanel
@@ -83,6 +94,16 @@ namespace MultiMouseSensitivityChanger
             CancelButton = cancelButton;
 
             okButton.Click += (_, __) => SaveDevice();
+
+            if (existing != null)
+            {
+                _pathTextBox.Text = existing.DevicePath;
+                _nameTextBox.Text = existing.Name;
+                _speedSelector.Value = Math.Max(_speedSelector.Minimum, Math.Min(_speedSelector.Maximum, existing.Speed));
+                _iconColor = existing.IconColor;
+                UpdateColorButton();
+                Text = "Edit device";
+            }
         }
 
         void BeginCapture()
@@ -109,6 +130,24 @@ namespace MultiMouseSensitivityChanger
             _statusLabel.Text = $"Applied speed {(int)_speedSelector.Value} for testing.";
         }
 
+        void ChooseColor()
+        {
+            using (var dialog = new ColorDialog { Color = _iconColor, FullOpen = true })
+            {
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    _iconColor = dialog.Color;
+                    UpdateColorButton();
+                }
+            }
+        }
+
+        void UpdateColorButton()
+        {
+            _colorButton.BackColor = _iconColor;
+            _colorButton.ForeColor = _iconColor.GetBrightness() < 0.5 ? Color.White : Color.Black;
+        }
+
         void SaveDevice()
         {
             if (string.IsNullOrWhiteSpace(_pathTextBox.Text))
@@ -125,7 +164,16 @@ namespace MultiMouseSensitivityChanger
                 return;
             }
 
-            NewProfile = new Program.DeviceProfile(_nameTextBox.Text.Trim(), _pathTextBox.Text.Trim(), (int)_speedSelector.Value);
+            string deviceName = _nameTextBox.Text.Trim();
+            bool isRenamingToExisting = _nameExists != null && !(_originalName?.Equals(deviceName, StringComparison.OrdinalIgnoreCase) ?? false) && _nameExists(deviceName);
+            if (isRenamingToExisting)
+            {
+                MessageBox.Show(this, "Another device with this name already exists. Please choose a different name.", "Duplicate name", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                DialogResult = DialogResult.None;
+                return;
+            }
+
+            NewProfile = new Program.DeviceProfile(deviceName, _pathTextBox.Text.Trim(), (int)_speedSelector.Value, _iconColor);
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
