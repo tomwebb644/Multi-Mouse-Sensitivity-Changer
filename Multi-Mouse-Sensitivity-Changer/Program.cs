@@ -40,15 +40,48 @@ namespace MultiMouseSensitivityChanger
 
         static string _activeDeviceKey = string.Empty;
 
+        const string SettingsRegistryKey = "Software\\Multi-Mouse-Sensitivity-Changer";
+        const string MouseSpeedSettingName = "MouseSpeed";
+        const string X8SpeedSettingName = "X8Speed";
+
         const string X8_KEY = "X8";
         const string MOUSE_KEY = "Mouse";
 
         [STAThread]
         static void Main()
         {
+            LoadPersistedSpeeds();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new TrayApplicationContext());
+        }
+
+        static void LoadPersistedSpeeds()
+        {
+            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(SettingsRegistryKey, false))
+            {
+                if (key?.GetValue(MouseSpeedSettingName) is int mouseSpeed)
+                    MOUSE_SPEED = ClampSpeed(mouseSpeed);
+
+                if (key?.GetValue(X8SpeedSettingName) is int x8Speed)
+                    X8_SPEED = ClampSpeed(x8Speed);
+            }
+        }
+
+        static void SavePersistedSpeeds()
+        {
+            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(SettingsRegistryKey, true) ?? Registry.CurrentUser.CreateSubKey(SettingsRegistryKey))
+            {
+                key.SetValue(MouseSpeedSettingName, MOUSE_SPEED, RegistryValueKind.DWord);
+                key.SetValue(X8SpeedSettingName, X8_SPEED, RegistryValueKind.DWord);
+            }
+        }
+
+        static int ClampSpeed(int speed)
+        {
+            if (speed < 1) return 1;
+            if (speed > 20) return 20;
+            return speed;
         }
 
         static void OnDeviceChanged(string devicePath)
@@ -171,6 +204,8 @@ namespace MultiMouseSensitivityChanger
                     X8_SPEED = tag.Speed;
                     UpdateMenuChecks(_x8SpeedMenu, tag.Speed);
                 }
+
+                SavePersistedSpeeds();
 
                 if (_activeDeviceKey == tag.DeviceKey)
                 {
