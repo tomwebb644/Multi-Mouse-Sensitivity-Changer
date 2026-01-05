@@ -54,13 +54,21 @@ namespace MultiMouseSensitivityChanger
 
             int targetSpeed = profile.Speed;
             long now = _sw.ElapsedMilliseconds;
-            if (targetSpeed != _lastSpeed && (now - _lastSwitchMs) >= MIN_SWITCH_MS)
+
+            string deviceKey = profile.DevicePath ?? profile.Name;
+            bool deviceChanged = !string.Equals(_activeDeviceKey, deviceKey, StringComparison.OrdinalIgnoreCase);
+            bool speedChanged = targetSpeed != _lastSpeed;
+            bool canSwitchSpeed = !speedChanged || (now - _lastSwitchMs) >= MIN_SWITCH_MS;
+
+            if (speedChanged && canSwitchSpeed)
             {
                 NativeMethods.SetMouseSpeed(targetSpeed);
                 _lastSpeed = targetSpeed;
                 _lastSwitchMs = now;
-                UpdateActiveDevice(profile, targetSpeed);
             }
+
+            if ((speedChanged && canSwitchSpeed) || deviceChanged)
+                UpdateActiveDevice(profile, targetSpeed);
         }
 
         static void InitializeDevices()
@@ -129,7 +137,7 @@ namespace MultiMouseSensitivityChanger
 
         static void UpdateActiveDevice(DeviceProfile profile, int speed)
         {
-            _activeDeviceKey = profile.Name;
+            _activeDeviceKey = profile.DevicePath ?? profile.Name;
             _activeDeviceItem.Text = $"Active: {profile.Name} (speed {speed})";
 
             _notifyIcon.Icon = GetIconForProfile(profile);
@@ -240,7 +248,8 @@ namespace MultiMouseSensitivityChanger
                 if (_speedMenus.TryGetValue(profile.Name, out var menu))
                     UpdateMenuChecks(menu, tag.Speed);
 
-                if (_activeDeviceKey.Equals(profile.Name, StringComparison.OrdinalIgnoreCase))
+                var activeKey = profile.DevicePath ?? profile.Name;
+                if (_activeDeviceKey.Equals(activeKey, StringComparison.OrdinalIgnoreCase))
                 {
                     NativeMethods.SetMouseSpeed(tag.Speed);
                     _lastSpeed = tag.Speed;
