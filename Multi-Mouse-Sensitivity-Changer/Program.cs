@@ -20,6 +20,8 @@ namespace MultiMouseSensitivityChanger
         static int X8_SPEED = 20;    // 1..20
         static int MOUSE_SPEED = 10; // 1..20
 
+        const string SettingsKeyPath = "Software\\MultiMouseSensitivityChanger";
+
         static int MIN_SWITCH_MS = 200;
         // ======================================
 
@@ -73,6 +75,44 @@ namespace MultiMouseSensitivityChanger
                 _lastSwitchMs = now;
                 UpdateActiveDevice(deviceKey, targetSpeed);
             }
+        }
+
+        static void LoadSpeedSettings()
+        {
+            MOUSE_SPEED = ReadSpeed(MOUSE_KEY, MOUSE_SPEED);
+            X8_SPEED = ReadSpeed(X8_KEY, X8_SPEED);
+        }
+
+        static int ReadSpeed(string deviceKey, int defaultValue)
+        {
+            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(SettingsKeyPath, false))
+            {
+                object value = key?.GetValue(deviceKey);
+
+                if (value is int intValue)
+                    return ClampSpeed(intValue, defaultValue);
+
+                if (value is string str && int.TryParse(str, out int parsed))
+                    return ClampSpeed(parsed, defaultValue);
+            }
+
+            return defaultValue;
+        }
+
+        static void SaveSpeed(string deviceKey, int speed)
+        {
+            using (RegistryKey key = Registry.CurrentUser.CreateSubKey(SettingsKeyPath))
+            {
+                key.SetValue(deviceKey, ClampSpeed(speed, speed), RegistryValueKind.DWord);
+            }
+        }
+
+        static int ClampSpeed(int speed, int fallback)
+        {
+            if (speed < 1 || speed > 20)
+                return fallback;
+
+            return speed;
         }
 
         static void UpdateActiveDevice(string deviceKey, int speed)
@@ -164,11 +204,13 @@ namespace MultiMouseSensitivityChanger
                 if (tag.DeviceKey == MOUSE_KEY)
                 {
                     MOUSE_SPEED = tag.Speed;
+                    SaveSpeed(MOUSE_KEY, MOUSE_SPEED);
                     UpdateMenuChecks(_mouseSpeedMenu, tag.Speed);
                 }
                 else if (tag.DeviceKey == X8_KEY)
                 {
                     X8_SPEED = tag.Speed;
+                    SaveSpeed(X8_KEY, X8_SPEED);
                     UpdateMenuChecks(_x8SpeedMenu, tag.Speed);
                 }
 
@@ -234,6 +276,7 @@ namespace MultiMouseSensitivityChanger
 
             public TrayApplicationContext()
             {
+                LoadSpeedSettings();
                 InitializeTrayIcon();
                 _window = new RawInputWindow(OnDeviceChanged);
             }
