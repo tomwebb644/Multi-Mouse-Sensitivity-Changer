@@ -11,11 +11,13 @@ namespace MultiMouseSensitivityChanger
         readonly TextBox _pathTextBox;
         readonly NumericUpDown _speedSelector;
         readonly Label _statusLabel;
+        readonly Panel _colorPreview;
+        Color _selectedColor = Color.Gray;
         RawInputCaptureWindow _captureWindow;
 
         public Program.DeviceProfile NewProfile { get; private set; }
 
-        public AddDeviceForm()
+        public AddDeviceForm(Program.DeviceProfile existing = null)
         {
             Text = "Add new device";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -28,7 +30,7 @@ namespace MultiMouseSensitivityChanger
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 6,
+                RowCount = 7,
                 Padding = new Padding(10),
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink
@@ -61,8 +63,17 @@ namespace MultiMouseSensitivityChanger
             testButton.Click += (_, __) => TestSpeed();
             layout.Controls.Add(testButton, 1, 4);
 
+            layout.Controls.Add(new Label { Text = "Icon color", AutoSize = true }, 0, 5);
+            var colorButton = new Button { Text = "Choose color", Dock = DockStyle.Left };
+            colorButton.Click += (_, __) => ChooseColor();
+            var colorPanel = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, Dock = DockStyle.Fill };
+            _colorPreview = new Panel { Width = 32, Height = 32, BackColor = _selectedColor, BorderStyle = BorderStyle.FixedSingle };
+            colorPanel.Controls.Add(colorButton);
+            colorPanel.Controls.Add(_colorPreview);
+            layout.Controls.Add(colorPanel, 1, 5);
+
             _statusLabel = new Label { Text = "Move your device to capture its path.", AutoSize = true, ForeColor = Color.DimGray };
-            layout.Controls.Add(_statusLabel, 0, 5);
+            layout.Controls.Add(_statusLabel, 0, 6);
             layout.SetColumnSpan(_statusLabel, 2);
 
             var buttons = new FlowLayoutPanel
@@ -83,6 +94,16 @@ namespace MultiMouseSensitivityChanger
             CancelButton = cancelButton;
 
             okButton.Click += (_, __) => SaveDevice();
+
+            if (existing != null)
+            {
+                _nameTextBox.Text = existing.Name;
+                _pathTextBox.Text = existing.DevicePath;
+                _speedSelector.Value = existing.Speed;
+                _selectedColor = existing.IconColor;
+                _colorPreview.BackColor = _selectedColor;
+                Text = "Edit device";
+            }
         }
 
         void BeginCapture()
@@ -109,6 +130,18 @@ namespace MultiMouseSensitivityChanger
             _statusLabel.Text = $"Applied speed {(int)_speedSelector.Value} for testing.";
         }
 
+        void ChooseColor()
+        {
+            using (var dialog = new ColorDialog { Color = _selectedColor })
+            {
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    _selectedColor = dialog.Color;
+                    _colorPreview.BackColor = _selectedColor;
+                }
+            }
+        }
+
         void SaveDevice()
         {
             if (string.IsNullOrWhiteSpace(_pathTextBox.Text))
@@ -125,7 +158,7 @@ namespace MultiMouseSensitivityChanger
                 return;
             }
 
-            NewProfile = new Program.DeviceProfile(_nameTextBox.Text.Trim(), _pathTextBox.Text.Trim(), (int)_speedSelector.Value);
+            NewProfile = new Program.DeviceProfile(_nameTextBox.Text.Trim(), _pathTextBox.Text.Trim(), (int)_speedSelector.Value, _selectedColor);
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
