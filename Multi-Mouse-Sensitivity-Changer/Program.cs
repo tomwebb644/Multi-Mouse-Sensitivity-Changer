@@ -12,13 +12,6 @@ namespace MultiMouseSensitivityChanger
 {
     static class Program
     {
-        // ====== SET THESE AFTER FIRST RUN ======
-        static string X8_DEVICE_PATH =
-        @"\\?\HID#VID_1997&PID_2433&MI_01&Col01#9&354159c2&0&0000#{378de44c-56ef-11d1-bc8c-00a0c91405dd}";
-
-        static string MOUSE_DEVICE_PATH =
-        @"\\?\HID#VID_046D&PID_C539&MI_01&Col01#8&10c9e4b2&0&0000#{378de44c-56ef-11d1-bc8c-00a0c91405dd}";
-
         const string SettingsKeyPath = "Software\\MultiMouseSensitivityChanger";
 
         static int MIN_SWITCH_MS = 200;
@@ -35,14 +28,10 @@ namespace MultiMouseSensitivityChanger
         static ToolStripMenuItem _startupItem;
         static ToolStripMenuItem _pathsMenu;
 
-        static Icon _mouseIcon;
-        static Icon _x8Icon;
         static Icon _defaultIcon;
+        static readonly Dictionary<string, Icon> _profileIcons = new Dictionary<string, Icon>(StringComparer.OrdinalIgnoreCase);
 
         static string _activeDeviceKey = string.Empty;
-
-        const string X8_KEY = "X8";
-        const string MOUSE_KEY = "Mouse";
 
         static readonly List<DeviceProfile> _deviceProfiles = new List<DeviceProfile>();
 
@@ -82,23 +71,18 @@ namespace MultiMouseSensitivityChanger
 
         static IEnumerable<DeviceProfile> LoadDevices()
         {
-            var defaults = new List<DeviceProfile>
-            {
-                new DeviceProfile(MOUSE_KEY, MOUSE_DEVICE_PATH, ReadSpeed(MOUSE_KEY, 10)),
-                new DeviceProfile(X8_KEY, X8_DEVICE_PATH, ReadSpeed(X8_KEY, 20))
-            };
-
             using (RegistryKey key = Registry.CurrentUser.OpenSubKey(SettingsKeyPath, false))
             {
                 string[] stored = key?.GetValue("Devices") as string[];
                 if (stored != null)
                 {
+                    var devices = new List<DeviceProfile>();
                     foreach (string entry in stored)
                     {
                         if (string.IsNullOrWhiteSpace(entry))
                             continue;
 
-                        string[] parts = entry.Split(new[] { '|' }, 3);
+                        string[] parts = entry.Split(new[] { '|' }, 4);
                         if (parts.Length < 3)
                             continue;
 
@@ -110,56 +94,29 @@ namespace MultiMouseSensitivityChanger
                         if (string.IsNullOrWhiteSpace(path))
                             continue;
 
-                        var existing = defaults.FirstOrDefault(p => p.DevicePath.Equals(path, StringComparison.OrdinalIgnoreCase));
-                        if (existing != null)
-                        {
-                            existing.Name = existing.Name ?? name;
-                            existing.Speed = ClampSpeed(speed, existing.Speed);
-                        }
-                        else
-                        {
-                            defaults.Add(new DeviceProfile(name, path, ClampSpeed(speed, speed)));
-                        }
+                        Color color = Color.Gray;
+                        if (parts.Length >= 4 && int.TryParse(parts[3], out int argb))
+                            color = Color.FromArgb(argb);
+
+                        devices.Add(new DeviceProfile(name, path, ClampSpeed(speed, speed), color));
                     }
+
+                    return devices;
                 }
             }
 
-            return defaults;
+            return Enumerable.Empty<DeviceProfile>();
         }
 
         static void SaveDevices()
         {
             using (RegistryKey key = Registry.CurrentUser.CreateSubKey(SettingsKeyPath))
             {
-                foreach (var profile in _deviceProfiles)
-                {
-                    if (profile.Name.Equals(MOUSE_KEY, StringComparison.OrdinalIgnoreCase))
-                        key.SetValue(MOUSE_KEY, ClampSpeed(profile.Speed, profile.Speed), RegistryValueKind.DWord);
-                    else if (profile.Name.Equals(X8_KEY, StringComparison.OrdinalIgnoreCase))
-                        key.SetValue(X8_KEY, ClampSpeed(profile.Speed, profile.Speed), RegistryValueKind.DWord);
-                }
-
                 string[] serialized = _deviceProfiles
-                    .Select(p => $"{p.Name}|{p.DevicePath}|{ClampSpeed(p.Speed, p.Speed)}")
+                    .Select(p => $"{p.Name}|{p.DevicePath}|{ClampSpeed(p.Speed, p.Speed)}|{p.IconColor.ToArgb()}")
                     .ToArray();
                 key.SetValue("Devices", serialized, RegistryValueKind.MultiString);
             }
-        }
-
-        static int ReadSpeed(string deviceKey, int defaultValue)
-        {
-            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(SettingsKeyPath, false))
-            {
-                object value = key?.GetValue(deviceKey);
-
-                if (value is int intValue)
-                    return ClampSpeed(intValue, defaultValue);
-
-                if (value is string str && int.TryParse(str, out int parsed))
-                    return ClampSpeed(parsed, defaultValue);
-            }
-
-            return defaultValue;
         }
 
         static int ClampSpeed(int speed, int fallback)
@@ -175,27 +132,12 @@ namespace MultiMouseSensitivityChanger
             _activeDeviceKey = profile.Name;
             _activeDeviceItem.Text = $"Active: {profile.Name} (speed {speed})";
 
-            if (profile.Name.Equals(X8_KEY, StringComparison.OrdinalIgnoreCase))
-            {
-                _notifyIcon.Icon = _x8Icon;
-                _notifyIcon.Text = "X8 speed " + speed;
-            }
-            else if (profile.Name.Equals(MOUSE_KEY, StringComparison.OrdinalIgnoreCase))
-            {
-                _notifyIcon.Icon = _mouseIcon;
-                _notifyIcon.Text = "Mouse speed " + speed;
-            }
-            else
-            {
-                _notifyIcon.Icon = _defaultIcon;
-                _notifyIcon.Text = $"{profile.Name} speed {speed}";
-            }
+            _notifyIcon.Icon = GetIconForProfile(profile);
+            _notifyIcon.Text = $"{profile.Name} speed {speed}";
         }
 
         static void InitializeTrayIcon()
         {
-            _mouseIcon = CreateIcon(Color.DodgerBlue, "M");
-            _x8Icon = CreateIcon(Color.MediumPurple, "X8");
             _defaultIcon = CreateIcon(Color.Gray, "MM");
 
             _menu = new ContextMenuStrip();
@@ -223,15 +165,23 @@ namespace MultiMouseSensitivityChanger
         {
             _menu.Items.Clear();
             _speedMenus.Clear();
+            ClearProfileIcons();
 
             _menu.Items.Add(_activeDeviceItem);
             _menu.Items.Add(new ToolStripSeparator());
 
-            foreach (var profile in _deviceProfiles)
+            if (_deviceProfiles.Count == 0)
             {
-                var speedMenu = BuildSpeedMenu(profile);
-                _speedMenus[profile.Name] = speedMenu;
-                _menu.Items.Add(speedMenu);
+                _menu.Items.Add(new ToolStripMenuItem("No devices configured") { Enabled = false });
+            }
+            else
+            {
+                foreach (var profile in _deviceProfiles)
+                {
+                    var speedMenu = BuildSpeedMenu(profile);
+                    _speedMenus[profile.Name] = speedMenu;
+                    _menu.Items.Add(speedMenu);
+                }
             }
 
             _menu.Items.Add(new ToolStripSeparator());
@@ -242,6 +192,10 @@ namespace MultiMouseSensitivityChanger
             var addDeviceItem = new ToolStripMenuItem("Add new device...");
             addDeviceItem.Click += (_, __) => ShowAddDeviceDialog();
             _menu.Items.Add(addDeviceItem);
+
+            var manageDevicesItem = new ToolStripMenuItem("Manage devices...");
+            manageDevicesItem.Click += (_, __) => ShowManageDevicesDialog();
+            _menu.Items.Add(manageDevicesItem);
 
             _menu.Items.Add(new ToolStripSeparator());
             _menu.Items.Add(_startupItem);
@@ -306,15 +260,23 @@ namespace MultiMouseSensitivityChanger
         static ToolStripMenuItem BuildPathsMenu()
         {
             var menu = new ToolStripMenuItem("Device paths") { Enabled = true };
-            foreach (var profile in _deviceProfiles)
-            {
-                menu.DropDownItems.Add(new ToolStripMenuItem(profile.Name) { Enabled = false, ToolTipText = profile.DevicePath });
-                menu.DropDownItems.Add(new ToolStripMenuItem(profile.DevicePath) { Enabled = false });
-                menu.DropDownItems.Add(new ToolStripSeparator());
-            }
 
-            if (menu.DropDownItems.Count > 0 && menu.DropDownItems[menu.DropDownItems.Count - 1] is ToolStripSeparator)
-                menu.DropDownItems.RemoveAt(menu.DropDownItems.Count - 1);
+            if (_deviceProfiles.Count == 0)
+            {
+                menu.DropDownItems.Add(new ToolStripMenuItem("No devices configured") { Enabled = false });
+            }
+            else
+            {
+                foreach (var profile in _deviceProfiles)
+                {
+                    menu.DropDownItems.Add(new ToolStripMenuItem(profile.Name) { Enabled = false, ToolTipText = profile.DevicePath });
+                    menu.DropDownItems.Add(new ToolStripMenuItem(profile.DevicePath) { Enabled = false });
+                    menu.DropDownItems.Add(new ToolStripSeparator());
+                }
+
+                if (menu.DropDownItems.Count > 0 && menu.DropDownItems[menu.DropDownItems.Count - 1] is ToolStripSeparator)
+                    menu.DropDownItems.RemoveAt(menu.DropDownItems.Count - 1);
+            }
 
             return menu;
         }
@@ -340,6 +302,53 @@ namespace MultiMouseSensitivityChanger
                     RebuildContextMenu();
                 }
             }
+        }
+
+        static void ShowManageDevicesDialog()
+        {
+            using (var form = new ManageDevicesForm(_deviceProfiles))
+            {
+                if (form.ShowDialog() == DialogResult.OK)
+                {
+                    _deviceProfiles.Clear();
+                    _deviceProfiles.AddRange(form.Devices);
+                    SaveDevices();
+                    RebuildContextMenu();
+                }
+            }
+        }
+
+        static Icon GetIconForProfile(DeviceProfile profile)
+        {
+            if (profile == null)
+                return _defaultIcon;
+
+            string key = profile.DevicePath ?? profile.Name;
+            if (string.IsNullOrWhiteSpace(key))
+                return _defaultIcon;
+
+            if (_profileIcons.TryGetValue(key, out var icon))
+                return icon;
+
+            string label = GetIconLabel(profile.Name);
+            icon = CreateIcon(profile.IconColor, label);
+            _profileIcons[key] = icon;
+            return icon;
+        }
+
+        static string GetIconLabel(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return "MM";
+
+            string trimmed = new string(name.Where(char.IsLetterOrDigit).ToArray());
+            if (trimmed.Length == 0)
+                trimmed = name.Trim();
+
+            if (trimmed.Length > 2)
+                return trimmed.Substring(0, 2).ToUpperInvariant();
+
+            return trimmed.ToUpperInvariant();
         }
 
         static Icon CreateIcon(Color color, string label)
@@ -381,6 +390,16 @@ namespace MultiMouseSensitivityChanger
             }
         }
 
+        static void ClearProfileIcons()
+        {
+            foreach (var icon in _profileIcons.Values)
+            {
+                icon?.Dispose();
+            }
+
+            _profileIcons.Clear();
+        }
+
         class TrayApplicationContext : ApplicationContext
         {
             readonly RawInputWindow _window;
@@ -398,9 +417,8 @@ namespace MultiMouseSensitivityChanger
                 {
                     _notifyIcon?.Dispose();
                     _menu?.Dispose();
-                    _mouseIcon?.Dispose();
-                    _x8Icon?.Dispose();
                     _defaultIcon?.Dispose();
+                    ClearProfileIcons();
                     _window?.Dispose();
                 }
                 base.Dispose(disposing);
@@ -512,16 +530,22 @@ namespace MultiMouseSensitivityChanger
 
         public class DeviceProfile
         {
-            public DeviceProfile(string name, string devicePath, int speed)
+            public DeviceProfile(string name, string devicePath, int speed) : this(name, devicePath, speed, Color.Gray)
+            {
+            }
+
+            public DeviceProfile(string name, string devicePath, int speed, Color iconColor)
             {
                 Name = name;
                 DevicePath = devicePath;
                 Speed = speed;
+                IconColor = iconColor;
             }
 
             public string Name { get; set; }
             public string DevicePath { get; set; }
             public int Speed { get; set; }
+            public Color IconColor { get; set; }
         }
 
         static class StartupManager
