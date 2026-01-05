@@ -4,7 +4,11 @@
 
 using System;
 using System.Diagnostics;
+using System.Drawing;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Windows.Forms;
+using Microsoft.Win32;
 
 class Program
 {
@@ -26,7 +30,34 @@ class Program
     static long _lastSwitchMs = 0;
     static Stopwatch _sw = Stopwatch.StartNew();
 
+    static NotifyIcon _notifyIcon;
+    static ContextMenuStrip _contextMenu;
+    static ToolStripMenuItem _mouseSpeedMenu;
+    static ToolStripMenuItem _x8SpeedMenu;
+    static ToolStripMenuItem _startWithWindowsItem;
+    static Icon _defaultIcon;
+    static Icon _mouseIcon;
+    static Icon _x8Icon;
+
+    const string RUN_KEY_PATH = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    const string RUN_VALUE_NAME = "MultiMouseSensitivityChanger";
+
+    [STAThread]
     static void Main()
+    {
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+
+        InitializeIcons();
+        SetupRawInputWindow();
+        SetupTray();
+
+        Application.Run();
+
+        TearDownTray();
+    }
+
+    static void SetupRawInputWindow()
     {
         WNDCLASS wc = new WNDCLASS();
         wc.lpszClassName = "RawInputSpeedSwitcherWindow";
@@ -59,13 +90,91 @@ class Program
         Console.WriteLine("Raw Input Speed Switcher running.");
         Console.WriteLine("Move devices to see their Raw Input device paths.");
         Console.WriteLine();
+    }
 
-        MSG msg;
-        while (GetMessage(out msg, IntPtr.Zero, 0, 0) > 0)
+    static void SetupTray()
+    {
+        _contextMenu = new ContextMenuStrip();
+
+        _mouseSpeedMenu = new ToolStripMenuItem();
+        BuildSpeedMenu(_mouseSpeedMenu, "Mouse", false);
+
+        _x8SpeedMenu = new ToolStripMenuItem();
+        BuildSpeedMenu(_x8SpeedMenu, "X8", true);
+
+        _startWithWindowsItem = new ToolStripMenuItem("Start with Windows")
         {
-            TranslateMessage(ref msg);
-            DispatchMessage(ref msg);
+            CheckOnClick = true,
+            Checked = IsStartWithWindowsEnabled()
+        };
+        _startWithWindowsItem.Click += (s, e) =>
+        {
+            bool enable = _startWithWindowsItem.Checked;
+            SetStartWithWindows(enable);
+            _startWithWindowsItem.Checked = IsStartWithWindowsEnabled();
+        };
+
+        ToolStripMenuItem exitItem = new ToolStripMenuItem("Exit");
+        exitItem.Click += (s, e) => Application.Exit();
+
+        _contextMenu.Items.Add(_mouseSpeedMenu);
+        _contextMenu.Items.Add(_x8SpeedMenu);
+        _contextMenu.Items.Add(new ToolStripSeparator());
+        _contextMenu.Items.Add(_startWithWindowsItem);
+        _contextMenu.Items.Add(new ToolStripSeparator());
+        _contextMenu.Items.Add(exitItem);
+
+        _notifyIcon = new NotifyIcon
+        {
+            Icon = _defaultIcon,
+            Visible = true,
+            Text = "Multi Mouse Sensitivity Changer",
+            ContextMenuStrip = _contextMenu
+        };
+    }
+
+    static void BuildSpeedMenu(ToolStripMenuItem menu, string label, bool isX8)
+    {
+        menu.DropDownItems.Clear();
+        menu.Text = label + " speed: " + (isX8 ? X8_SPEED : MOUSE_SPEED);
+        for (int i = 1; i <= 20; i++)
+        {
+            int speed = i;
+            ToolStripMenuItem item = new ToolStripMenuItem(speed.ToString())
+            {
+                Checked = speed == (isX8 ? X8_SPEED : MOUSE_SPEED),
+                CheckOnClick = true
+            };
+            item.Click += (s, e) =>
+            {
+                if (isX8)
+                    X8_SPEED = speed;
+                else
+                    MOUSE_SPEED = speed;
+
+                BuildSpeedMenu(menu, label, isX8);
+                SetMouseSpeed(speed);
+                _lastSpeed = speed;
+                _lastSwitchMs = _sw.ElapsedMilliseconds;
+                UpdateTrayForDevice(isX8 ? X8_DEVICE_PATH : MOUSE_DEVICE_PATH, speed);
+            };
+            menu.DropDownItems.Add(item);
         }
+    }
+
+    static void TearDownTray()
+    {
+        if (_notifyIcon != null)
+        {
+            _notifyIcon.Visible = false;
+            _notifyIcon.Dispose();
+        }
+
+        _contextMenu?.Dispose();
+
+        _defaultIcon?.Dispose();
+        _mouseIcon?.Dispose();
+        _x8Icon?.Dispose();
     }
 
     static IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -118,6 +227,7 @@ class Program
                 _lastSpeed = targetSpeed;
                 _lastSwitchMs = now;
                 Console.WriteLine("-> Speed " + targetSpeed);
+                UpdateTrayForDevice(devicePath, targetSpeed);
             }
         }
         finally
@@ -156,6 +266,89 @@ class Program
     static void ThrowLastWin32(string msg)
     {
         throw new Exception(msg + " Win32=" + Marshal.GetLastWin32Error());
+    }
+
+    static void UpdateTrayForDevice(string devicePath, int speed)
+    {
+        if (_notifyIcon == null) return;
+
+        if (devicePath.Equals(X8_DEVICE_PATH, StringComparison.OrdinalIgnoreCase))
+            _notifyIcon.Icon = _x8Icon;
+        else if (devicePath.Equals(MOUSE_DEVICE_PATH, StringComparison.OrdinalIgnoreCase))
+            _notifyIcon.Icon = _mouseIcon;
+        else
+            _notifyIcon.Icon = _defaultIcon;
+
+        _notifyIcon.Text = "Speed " + speed + " from " + devicePath;
+        _notifyIcon.Visible = true;
+
+        BuildSpeedMenu(_mouseSpeedMenu, "Mouse", false);
+        BuildSpeedMenu(_x8SpeedMenu, "X8", true);
+    }
+
+    static void InitializeIcons()
+    {
+        _mouseIcon = CreateIcon(Color.SteelBlue, "M");
+        _x8Icon = CreateIcon(Color.MediumPurple, "X");
+        _defaultIcon = CreateIcon(Color.Gray, "?");
+    }
+
+    static Icon CreateIcon(Color background, string text)
+    {
+        using (Bitmap bmp = new Bitmap(16, 16))
+        using (Graphics g = Graphics.FromImage(bmp))
+        using (Brush brush = new SolidBrush(background))
+        using (Brush textBrush = new SolidBrush(Color.White))
+        using (Font font = new Font("Segoe UI", 8, FontStyle.Bold, GraphicsUnit.Pixel))
+        {
+            g.Clear(Color.Transparent);
+            g.FillRectangle(brush, 0, 0, 16, 16);
+            StringFormat format = new StringFormat
+            {
+                Alignment = StringAlignment.Center,
+                LineAlignment = StringAlignment.Center
+            };
+            g.DrawString(text, font, textBrush, new RectangleF(0, 0, 16, 16), format);
+
+            IntPtr hIcon = bmp.GetHicon();
+            Icon icon = Icon.FromHandle(hIcon);
+            Icon clone = (Icon)icon.Clone();
+            DestroyIcon(hIcon);
+            icon.Dispose();
+            return clone;
+        }
+    }
+
+    static bool IsStartWithWindowsEnabled()
+    {
+        using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RUN_KEY_PATH, false))
+        {
+            if (key == null) return false;
+            string value = key.GetValue(RUN_VALUE_NAME) as string;
+            string exe = Assembly.GetExecutingAssembly().Location;
+            string quotedExe = "\"" + exe + "\"";
+            return string.Equals(value, exe, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(value, quotedExe, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    static void SetStartWithWindows(bool enable)
+    {
+        using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RUN_KEY_PATH, true) ??
+            Registry.CurrentUser.CreateSubKey(RUN_KEY_PATH))
+        {
+            if (key == null) return;
+
+            if (enable)
+            {
+                string exe = Assembly.GetExecutingAssembly().Location;
+                key.SetValue(RUN_VALUE_NAME, "\"" + exe + "\"");
+            }
+            else
+            {
+                key.DeleteValue(RUN_VALUE_NAME, false);
+            }
+        }
     }
 
     // ================= Win32 =================
@@ -276,4 +469,7 @@ class Program
     [DllImport("user32.dll", SetLastError = true)]
     static extern bool SystemParametersInfo(
         uint uiAction, uint uiParam, IntPtr pvParam, uint fWinIni);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    static extern bool DestroyIcon(IntPtr hIcon);
 }
