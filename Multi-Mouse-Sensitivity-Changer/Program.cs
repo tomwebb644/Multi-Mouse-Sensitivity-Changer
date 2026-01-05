@@ -421,7 +421,7 @@ namespace MultiMouseSensitivityChanger
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        struct RAWINPUTDEVICE
+        public struct RAWINPUTDEVICE
         {
             public ushort usUsagePage;
             public ushort usUsage;
@@ -430,7 +430,7 @@ namespace MultiMouseSensitivityChanger
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        struct RAWINPUTHEADER
+        public struct RAWINPUTHEADER
         {
             public uint dwType;
             public uint dwSize;
@@ -439,14 +439,14 @@ namespace MultiMouseSensitivityChanger
         }
 
         [StructLayout(LayoutKind.Explicit)]
-        struct RAWINPUT
+        public struct RAWINPUT
         {
             [FieldOffset(0)] public RAWINPUTHEADER header;
             [FieldOffset(16)] public RAWMOUSE data;
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        struct RAWMOUSE
+        public struct RAWMOUSE
         {
             public ushort usFlags;
             public uint ulButtons;
