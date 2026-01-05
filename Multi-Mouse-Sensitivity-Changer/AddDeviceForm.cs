@@ -122,6 +122,7 @@ namespace MultiMouseSensitivityChanger
             _statusLabel.Text = "Captured device path. You can rename it and choose a default speed.";
             _captureWindow?.Dispose();
             _captureWindow = null;
+            Program.EnsureRawInputRegistration();
         }
 
         void TestSpeed()
@@ -164,6 +165,7 @@ namespace MultiMouseSensitivityChanger
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             _captureWindow?.Dispose();
+            Program.EnsureRawInputRegistration();
             base.OnFormClosed(e);
         }
 

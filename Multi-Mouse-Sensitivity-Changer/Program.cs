@@ -34,6 +34,7 @@ namespace MultiMouseSensitivityChanger
         static string _activeDeviceKey = string.Empty;
 
         static readonly List<DeviceProfile> _deviceProfiles = new List<DeviceProfile>();
+        static RawInputWindow _rawInputWindow;
 
         [STAThread]
         static void Main()
@@ -54,13 +55,21 @@ namespace MultiMouseSensitivityChanger
 
             int targetSpeed = profile.Speed;
             long now = _sw.ElapsedMilliseconds;
-            if (targetSpeed != _lastSpeed && (now - _lastSwitchMs) >= MIN_SWITCH_MS)
+
+            string deviceKey = profile.DevicePath ?? profile.Name;
+            bool deviceChanged = !string.Equals(_activeDeviceKey, deviceKey, StringComparison.OrdinalIgnoreCase);
+            bool speedChanged = targetSpeed != _lastSpeed;
+            bool canSwitchSpeed = !speedChanged || (now - _lastSwitchMs) >= MIN_SWITCH_MS;
+
+            if (speedChanged && canSwitchSpeed)
             {
                 NativeMethods.SetMouseSpeed(targetSpeed);
                 _lastSpeed = targetSpeed;
                 _lastSwitchMs = now;
-                UpdateActiveDevice(profile, targetSpeed);
             }
+
+            if ((speedChanged && canSwitchSpeed) || deviceChanged)
+                UpdateActiveDevice(profile, targetSpeed);
         }
 
         static void InitializeDevices()
@@ -129,7 +138,7 @@ namespace MultiMouseSensitivityChanger
 
         static void UpdateActiveDevice(DeviceProfile profile, int speed)
         {
-            _activeDeviceKey = profile.Name;
+            _activeDeviceKey = profile.DevicePath ?? profile.Name;
             _activeDeviceItem.Text = $"Active: {profile.Name} (speed {speed})";
 
             _notifyIcon.Icon = GetIconForProfile(profile);
@@ -240,7 +249,8 @@ namespace MultiMouseSensitivityChanger
                 if (_speedMenus.TryGetValue(profile.Name, out var menu))
                     UpdateMenuChecks(menu, tag.Speed);
 
-                if (_activeDeviceKey.Equals(profile.Name, StringComparison.OrdinalIgnoreCase))
+                var activeKey = profile.DevicePath ?? profile.Name;
+                if (_activeDeviceKey.Equals(activeKey, StringComparison.OrdinalIgnoreCase))
                 {
                     NativeMethods.SetMouseSpeed(tag.Speed);
                     _lastSpeed = tag.Speed;
@@ -302,6 +312,8 @@ namespace MultiMouseSensitivityChanger
                     RebuildContextMenu();
                 }
             }
+
+            EnsureRawInputRegistration();
         }
 
         static void ShowManageDevicesDialog()
@@ -402,13 +414,11 @@ namespace MultiMouseSensitivityChanger
 
         class TrayApplicationContext : ApplicationContext
         {
-            readonly RawInputWindow _window;
-
             public TrayApplicationContext()
             {
                 InitializeDevices();
                 InitializeTrayIcon();
-                _window = new RawInputWindow(OnDeviceChanged);
+                _rawInputWindow = new RawInputWindow(OnDeviceChanged);
             }
 
             protected override void Dispose(bool disposing)
@@ -419,7 +429,7 @@ namespace MultiMouseSensitivityChanger
                     _menu?.Dispose();
                     _defaultIcon?.Dispose();
                     ClearProfileIcons();
-                    _window?.Dispose();
+                    _rawInputWindow?.Dispose();
                 }
                 base.Dispose(disposing);
             }
@@ -434,6 +444,11 @@ namespace MultiMouseSensitivityChanger
                 _deviceCallback = deviceCallback;
                 CreateHandle(new CreateParams());
 
+                RegisterForRawInput();
+            }
+
+            public void RegisterForRawInput()
+            {
                 RAWINPUTDEVICE[] rid = new[]
                 {
                     new RAWINPUTDEVICE
@@ -514,6 +529,11 @@ namespace MultiMouseSensitivityChanger
             {
                 DestroyHandle();
             }
+        }
+
+        public static void EnsureRawInputRegistration()
+        {
+            _rawInputWindow?.RegisterForRawInput();
         }
 
         class SpeedTag
