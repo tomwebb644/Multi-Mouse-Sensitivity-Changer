@@ -32,9 +32,15 @@ namespace MultiMouseSensitivityChanger
                 HideSelection = false
             };
             _deviceList.Columns.Add("Name", 140);
+            _deviceList.Columns.Add("Enabled", 70);
+            _deviceList.Columns.Add("Auto apply", 80);
+            _deviceList.Columns.Add("Startup", 70);
             _deviceList.Columns.Add("Speed", 60);
+            _deviceList.Columns.Add("Precision", 80);
+            _deviceList.Columns.Add("Scroll", 100);
+            _deviceList.Columns.Add("Buttons", 80);
             _deviceList.Columns.Add("Icon color", 120);
-            _deviceList.Columns.Add("Device path", 360);
+            _deviceList.Columns.Add("Device path", 240);
             _deviceList.SelectedIndexChanged += (_, __) => UpdateButtons();
 
             var addButton = new Button { Text = "Add", AutoSize = true };
@@ -98,7 +104,13 @@ namespace MultiMouseSensitivityChanger
                 {
                     Tag = device
                 };
+                item.SubItems.Add(device.IsEnabled ? "Yes" : "No");
+                item.SubItems.Add(device.ApplyAutomatically ? "Yes" : "No");
+                item.SubItems.Add(device.ApplyOnStartup ? "Yes" : "No");
                 item.SubItems.Add(device.Speed.ToString());
+                item.SubItems.Add(device.EnhancePointerPrecision ? "Enhanced" : "Standard");
+                item.SubItems.Add($"{device.ScrollLines}/{device.ScrollChars}");
+                item.SubItems.Add(device.SwapButtons ? "Swapped" : "Normal");
                 item.SubItems.Add(device.IconColor.Name);
                 item.SubItems.Add(device.DevicePath);
                 _deviceList.Items.Add(item);
@@ -143,6 +155,14 @@ namespace MultiMouseSensitivityChanger
                     profile.DevicePath = form.NewProfile.DevicePath;
                     profile.Speed = form.NewProfile.Speed;
                     profile.IconColor = form.NewProfile.IconColor;
+                    profile.IsEnabled = form.NewProfile.IsEnabled;
+                    profile.ApplyAutomatically = form.NewProfile.ApplyAutomatically;
+                    profile.ApplyOnStartup = form.NewProfile.ApplyOnStartup;
+                    profile.EnhancePointerPrecision = form.NewProfile.EnhancePointerPrecision;
+                    profile.ScrollLines = form.NewProfile.ScrollLines;
+                    profile.ScrollChars = form.NewProfile.ScrollChars;
+                    profile.SwapButtons = form.NewProfile.SwapButtons;
+                    profile.DoubleClickTime = form.NewProfile.DoubleClickTime;
                     RefreshList();
                 }
             }
@@ -163,7 +183,19 @@ namespace MultiMouseSensitivityChanger
 
         Program.DeviceProfile CloneProfile(Program.DeviceProfile profile)
         {
-            return new Program.DeviceProfile(profile.Name, profile.DevicePath, profile.Speed, profile.IconColor);
+            return new Program.DeviceProfile(
+                profile.Name,
+                profile.DevicePath,
+                profile.Speed,
+                profile.IconColor,
+                profile.IsEnabled,
+                profile.ApplyAutomatically,
+                profile.ApplyOnStartup,
+                profile.EnhancePointerPrecision,
+                profile.ScrollLines,
+                profile.ScrollChars,
+                profile.SwapButtons,
+                profile.DoubleClickTime);
         }
     }
 }
