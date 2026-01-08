@@ -76,7 +76,7 @@ namespace MultiMouseSensitivityChanger
                         if (string.IsNullOrWhiteSpace(entry))
                             continue;
 
-                        string[] parts = entry.Split(new[] { '|' }, 4);
+                        string[] parts = entry.Split(new[] { '|' });
                         if (parts.Length < 3)
                             continue;
 
@@ -411,6 +411,14 @@ namespace MultiMouseSensitivityChanger
             NativeMethods.SystemParametersInfo(NativeMethods.SPI_SETWHEELSCROLLCHARS, 0, (IntPtr)chars, NativeMethods.SPIF_SENDCHANGE);
         }
 
+        static bool IsMouseActivity(RAWMOUSE mouse)
+        {
+            if (mouse.lLastX != 0 || mouse.lLastY != 0)
+                return true;
+
+            return (mouse.usButtonFlags & (NativeMethods.RI_MOUSE_WHEEL | NativeMethods.RI_MOUSE_HWHEEL)) != 0;
+        }
+
         static void SetSwapButtons(bool swapButtons)
         {
             NativeMethods.SwapMouseButton(swapButtons ? 1 : 0);
@@ -585,7 +593,7 @@ namespace MultiMouseSensitivityChanger
                     if (raw.header.dwType != NativeMethods.RIM_TYPEMOUSE)
                         return string.Empty;
 
-                    if (raw.data.lLastX == 0 && raw.data.lLastY == 0)
+                    if (!IsMouseActivity(raw.data))
                         return string.Empty;
 
                     return GetDeviceName(raw.header.hDevice);
@@ -774,6 +782,8 @@ namespace MultiMouseSensitivityChanger
             public const uint RIM_TYPEMOUSE = 0;
             public const uint RIDI_DEVICENAME = 0x20000007;
             public const uint RIDEV_INPUTSINK = 0x00000100;
+            public const ushort RI_MOUSE_WHEEL = 0x0400;
+            public const ushort RI_MOUSE_HWHEEL = 0x0800;
             public const uint SPI_SETMOUSESPEED = 0x0071;
             public const uint SPI_SETMOUSE = 0x0004;
             public const uint SPI_SETWHEELSCROLLLINES = 0x0069;

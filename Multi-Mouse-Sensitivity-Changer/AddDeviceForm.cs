@@ -410,6 +410,14 @@ namespace MultiMouseSensitivityChanger
             return lines > 0 ? lines : 3;
         }
 
+        static bool IsMouseActivity(Program.RAWMOUSE mouse)
+        {
+            if (mouse.lLastX != 0 || mouse.lLastY != 0)
+                return true;
+
+            return (mouse.usButtonFlags & (Program.NativeMethods.RI_MOUSE_WHEEL | Program.NativeMethods.RI_MOUSE_HWHEEL)) != 0;
+        }
+
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             _captureWindow?.Dispose();
@@ -469,7 +477,7 @@ namespace MultiMouseSensitivityChanger
                     if (raw.header.dwType != Program.NativeMethods.RIM_TYPEMOUSE)
                         return string.Empty;
 
-                    if (raw.data.lLastX == 0 && raw.data.lLastY == 0)
+                    if (!IsMouseActivity(raw.data))
                         return string.Empty;
 
                     return GetDeviceName(raw.header.hDevice);
