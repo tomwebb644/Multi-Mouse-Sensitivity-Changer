@@ -714,8 +714,8 @@ namespace MultiMouseSensitivityChanger
             {
                 Speed = profile.Speed;
                 EnhancePointerPrecision = profile.EnhancePointerPrecision;
-                ScrollLines = profile.ScrollLines;
-                ScrollChars = profile.ScrollChars;
+                ScrollLines = NormalizeScrollLines(profile.ScrollLines);
+                ScrollChars = NormalizeScrollChars(profile.ScrollChars);
                 SwapButtons = profile.SwapButtons;
                 DoubleClickTime = profile.DoubleClickTime;
                 DeviceKey = profile.DevicePath ?? profile.Name ?? string.Empty;
@@ -742,6 +742,16 @@ namespace MultiMouseSensitivityChanger
                     && DoubleClickTime == other.DoubleClickTime
                     && string.Equals(DeviceKey, other.DeviceKey, StringComparison.OrdinalIgnoreCase);
             }
+        }
+
+        static int NormalizeScrollLines(int scrollLines)
+        {
+            return scrollLines > 0 ? scrollLines : DefaultScrollLines;
+        }
+
+        static int NormalizeScrollChars(int scrollChars)
+        {
+            return scrollChars > 0 ? scrollChars : 3;
         }
 
         static class StartupManager
