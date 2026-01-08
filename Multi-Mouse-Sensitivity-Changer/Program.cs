@@ -15,6 +15,8 @@ namespace MultiMouseSensitivityChanger
         const string SettingsKeyPath = "Software\\MultiMouseSensitivityChanger";
 
         static int MIN_SWITCH_MS = 200;
+        const int DefaultScrollLines = 3;
+        const int DefaultScrollChars = 3;
         // ======================================
 
         static int _lastSpeed = -1;
@@ -52,6 +54,9 @@ namespace MultiMouseSensitivityChanger
             if (profile == null)
                 return;
 
+            if (!profile.Enabled || !profile.AutoApply)
+                return;
+
             int targetSpeed = profile.Speed;
             long now = _sw.ElapsedMilliseconds;
 
@@ -60,15 +65,25 @@ namespace MultiMouseSensitivityChanger
             bool speedChanged = targetSpeed != _lastSpeed;
             bool canSwitchSpeed = !speedChanged || (now - _lastSwitchMs) >= MIN_SWITCH_MS;
 
-            if (speedChanged && canSwitchSpeed)
+            if (deviceChanged)
             {
-                NativeMethods.SetMouseSpeed(targetSpeed);
-                _lastSpeed = targetSpeed;
-                _lastSwitchMs = now;
+                ApplyProfileSettings(profile, canSwitchSpeed);
+                if (canSwitchSpeed)
+                {
+                    _lastSpeed = targetSpeed;
+                    _lastSwitchMs = now;
+                }
+                UpdateActiveDevice(profile, targetSpeed);
+                return;
             }
 
-            if ((speedChanged && canSwitchSpeed) || deviceChanged)
+            if (speedChanged && canSwitchSpeed)
+            {
+                ApplyProfileSettings(profile, true);
+                _lastSpeed = targetSpeed;
+                _lastSwitchMs = now;
                 UpdateActiveDevice(profile, targetSpeed);
+            }
         }
 
         static void InitializeDevices()
@@ -90,7 +105,7 @@ namespace MultiMouseSensitivityChanger
                         if (string.IsNullOrWhiteSpace(entry))
                             continue;
 
-                        string[] parts = entry.Split(new[] { '|' }, 4);
+                        string[] parts = entry.Split(new[] { '|' }, 11);
                         if (parts.Length < 3)
                             continue;
 
@@ -106,7 +121,26 @@ namespace MultiMouseSensitivityChanger
                         if (parts.Length >= 4 && int.TryParse(parts[3], out int argb))
                             color = Color.FromArgb(argb);
 
-                        devices.Add(new DeviceProfile(name, path, ClampSpeed(speed, speed), color));
+                        bool enabled = parts.Length >= 5 ? ParseBool(parts[4], true) : true;
+                        bool enhancePrecision = parts.Length >= 6 ? ParseBool(parts[5], true) : true;
+                        int verticalScroll = parts.Length >= 7 && int.TryParse(parts[6], out int vScroll) ? ClampScroll(vScroll, DefaultScrollLines) : DefaultScrollLines;
+                        int horizontalScroll = parts.Length >= 8 && int.TryParse(parts[7], out int hScroll) ? ClampScroll(hScroll, DefaultScrollChars) : DefaultScrollChars;
+                        bool swapButtons = parts.Length >= 9 ? ParseBool(parts[8], false) : false;
+                        bool applyOnStartup = parts.Length >= 10 ? ParseBool(parts[9], false) : false;
+                        bool autoApply = parts.Length >= 11 ? ParseBool(parts[10], true) : true;
+
+                        devices.Add(new DeviceProfile(
+                            name,
+                            path,
+                            ClampSpeed(speed, speed),
+                            color,
+                            enhancePrecision,
+                            verticalScroll,
+                            horizontalScroll,
+                            swapButtons,
+                            enabled,
+                            autoApply,
+                            applyOnStartup));
                     }
 
                     return devices;
@@ -121,7 +155,20 @@ namespace MultiMouseSensitivityChanger
             using (RegistryKey key = Registry.CurrentUser.CreateSubKey(SettingsKeyPath))
             {
                 string[] serialized = _deviceProfiles
-                    .Select(p => $"{p.Name}|{p.DevicePath}|{ClampSpeed(p.Speed, p.Speed)}|{p.IconColor.ToArgb()}")
+                    .Select(p => string.Join("|", new[]
+                    {
+                        p.Name,
+                        p.DevicePath,
+                        ClampSpeed(p.Speed, p.Speed).ToString(),
+                        p.IconColor.ToArgb().ToString(),
+                        p.Enabled.ToString(),
+                        p.EnhancePointerPrecision.ToString(),
+                        ClampScroll(p.VerticalScrollLines, DefaultScrollLines).ToString(),
+                        ClampScroll(p.HorizontalScrollChars, DefaultScrollChars).ToString(),
+                        p.SwapButtons.ToString(),
+                        p.ApplyOnStartup.ToString(),
+                        p.AutoApply.ToString()
+                    }))
                     .ToArray();
                 key.SetValue("Devices", serialized, RegistryValueKind.MultiString);
             }
@@ -135,6 +182,22 @@ namespace MultiMouseSensitivityChanger
             return speed;
         }
 
+        static int ClampScroll(int value, int fallback)
+        {
+            if (value < 0 || value > 100)
+                return fallback;
+
+            return value;
+        }
+
+        static bool ParseBool(string value, bool fallback)
+        {
+            if (bool.TryParse(value, out bool parsed))
+                return parsed;
+
+            return fallback;
+        }
+
         static void UpdateActiveDevice(DeviceProfile profile, int speed)
         {
             _activeDeviceKey = profile.DevicePath ?? profile.Name;
@@ -142,6 +205,56 @@ namespace MultiMouseSensitivityChanger
 
             _notifyIcon.Icon = GetIconForProfile(profile);
             _notifyIcon.Text = $"{profile.Name} speed {speed}";
+        }
+
+        static void ApplyProfileSettings(DeviceProfile profile, bool applySpeed)
+        {
+            if (profile == null)
+                return;
+
+            if (applySpeed)
+                NativeMethods.SetMouseSpeed(profile.Speed);
+
+            SetPointerPrecision(profile.EnhancePointerPrecision);
+            SetScrollLines(profile.VerticalScrollLines);
+            SetScrollChars(profile.HorizontalScrollChars);
+            SetSwapButtons(profile.SwapButtons);
+        }
+
+        static void SetPointerPrecision(bool enabled)
+        {
+            int[] mouseParams = new int[3];
+            if (!NativeMethods.SystemParametersInfo(NativeMethods.SPI_GETMOUSE, 0, mouseParams, 0))
+            {
+                mouseParams[0] = 6;
+                mouseParams[1] = 10;
+            }
+
+            mouseParams[2] = enabled ? 1 : 0;
+            NativeMethods.SystemParametersInfo(NativeMethods.SPI_SETMOUSE, 0, mouseParams, NativeMethods.SPIF_SENDCHANGE);
+        }
+
+        static void SetScrollLines(int lines)
+        {
+            NativeMethods.SystemParametersInfo(NativeMethods.SPI_SETWHEELSCROLLLINES, (uint)ClampScroll(lines, DefaultScrollLines), IntPtr.Zero, NativeMethods.SPIF_SENDCHANGE);
+        }
+
+        static void SetScrollChars(int chars)
+        {
+            NativeMethods.SystemParametersInfo(NativeMethods.SPI_SETWHEELSCROLLCHARS, (uint)ClampScroll(chars, DefaultScrollChars), IntPtr.Zero, NativeMethods.SPIF_SENDCHANGE);
+        }
+
+        static void SetSwapButtons(bool swap)
+        {
+            NativeMethods.SystemParametersInfo(NativeMethods.SPI_SETMOUSEBUTTONSWAP, swap ? 1u : 0u, IntPtr.Zero, NativeMethods.SPIF_SENDCHANGE);
+        }
+
+        static void ClearStartupProfiles()
+        {
+            foreach (var profile in _deviceProfiles)
+            {
+                profile.ApplyOnStartup = false;
+            }
         }
 
         static void InitializeTrayIcon()
@@ -167,6 +280,18 @@ namespace MultiMouseSensitivityChanger
                 Text = "Multi-Mouse Sensitivity Changer",
                 ContextMenuStrip = _menu
             };
+        }
+
+        static void ApplyStartupProfile()
+        {
+            var profile = _deviceProfiles.FirstOrDefault(p => p.ApplyOnStartup && p.Enabled);
+            if (profile == null)
+                return;
+
+            ApplyProfileSettings(profile, true);
+            _lastSpeed = profile.Speed;
+            _lastSwitchMs = _sw.ElapsedMilliseconds;
+            UpdateActiveDevice(profile, profile.Speed);
         }
 
         static void RebuildContextMenu()
@@ -247,8 +372,9 @@ namespace MultiMouseSensitivityChanger
                 var activeKey = profile.DevicePath ?? profile.Name;
                 if (_activeDeviceKey.Equals(activeKey, StringComparison.OrdinalIgnoreCase))
                 {
-                    NativeMethods.SetMouseSpeed(tag.Speed);
+                    ApplyProfileSettings(profile, true);
                     _lastSpeed = tag.Speed;
+                    _lastSwitchMs = _sw.ElapsedMilliseconds;
                     UpdateActiveDevice(profile, tag.Speed);
                 }
             }
@@ -268,11 +394,22 @@ namespace MultiMouseSensitivityChanger
             {
                 if (form.ShowDialog() == DialogResult.OK && form.NewProfile != null)
                 {
+                    if (form.NewProfile.ApplyOnStartup)
+                        ClearStartupProfiles();
+
                     var existing = _deviceProfiles.FirstOrDefault(p => p.DevicePath.Equals(form.NewProfile.DevicePath, StringComparison.OrdinalIgnoreCase));
                     if (existing != null)
                     {
                         existing.Name = form.NewProfile.Name;
                         existing.Speed = form.NewProfile.Speed;
+                        existing.IconColor = form.NewProfile.IconColor;
+                        existing.EnhancePointerPrecision = form.NewProfile.EnhancePointerPrecision;
+                        existing.VerticalScrollLines = form.NewProfile.VerticalScrollLines;
+                        existing.HorizontalScrollChars = form.NewProfile.HorizontalScrollChars;
+                        existing.SwapButtons = form.NewProfile.SwapButtons;
+                        existing.Enabled = form.NewProfile.Enabled;
+                        existing.AutoApply = form.NewProfile.AutoApply;
+                        existing.ApplyOnStartup = form.NewProfile.ApplyOnStartup;
                     }
                     else
                     {
@@ -389,6 +526,7 @@ namespace MultiMouseSensitivityChanger
             {
                 InitializeDevices();
                 InitializeTrayIcon();
+                ApplyStartupProfile();
                 _rawInputWindow = new RawInputWindow(OnDeviceChanged);
             }
 
@@ -526,17 +664,47 @@ namespace MultiMouseSensitivityChanger
             }
 
             public DeviceProfile(string name, string devicePath, int speed, Color iconColor)
+                : this(name, devicePath, speed, iconColor, true, DefaultScrollLines, DefaultScrollChars, false, true, true, false)
+            {
+            }
+
+            public DeviceProfile(
+                string name,
+                string devicePath,
+                int speed,
+                Color iconColor,
+                bool enhancePointerPrecision,
+                int verticalScrollLines,
+                int horizontalScrollChars,
+                bool swapButtons,
+                bool enabled,
+                bool autoApply,
+                bool applyOnStartup)
             {
                 Name = name;
                 DevicePath = devicePath;
                 Speed = speed;
                 IconColor = iconColor;
+                EnhancePointerPrecision = enhancePointerPrecision;
+                VerticalScrollLines = verticalScrollLines;
+                HorizontalScrollChars = horizontalScrollChars;
+                SwapButtons = swapButtons;
+                Enabled = enabled;
+                AutoApply = autoApply;
+                ApplyOnStartup = applyOnStartup;
             }
 
             public string Name { get; set; }
             public string DevicePath { get; set; }
             public int Speed { get; set; }
             public Color IconColor { get; set; }
+            public bool EnhancePointerPrecision { get; set; }
+            public int VerticalScrollLines { get; set; }
+            public int HorizontalScrollChars { get; set; }
+            public bool SwapButtons { get; set; }
+            public bool Enabled { get; set; }
+            public bool AutoApply { get; set; }
+            public bool ApplyOnStartup { get; set; }
         }
 
         static class StartupManager
@@ -577,7 +745,12 @@ namespace MultiMouseSensitivityChanger
             public const uint RIM_TYPEMOUSE = 0;
             public const uint RIDI_DEVICENAME = 0x20000007;
             public const uint RIDEV_INPUTSINK = 0x00000100;
+            public const uint SPI_GETMOUSE = 0x0003;
+            public const uint SPI_SETMOUSE = 0x0004;
             public const uint SPI_SETMOUSESPEED = 0x0071;
+            public const uint SPI_SETMOUSEBUTTONSWAP = 0x0021;
+            public const uint SPI_SETWHEELSCROLLLINES = 0x0069;
+            public const uint SPI_SETWHEELSCROLLCHARS = 0x006C;
             public const uint SPIF_SENDCHANGE = 0x02;
 
             public static void SetMouseSpeed(int speed)
@@ -589,6 +762,9 @@ namespace MultiMouseSensitivityChanger
 
             [DllImport("user32.dll", SetLastError = true)]
             public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, IntPtr pvParam, uint fWinIni);
+
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, int[] pvParam, uint fWinIni);
 
             [DllImport("user32.dll", SetLastError = true)]
             public static extern bool RegisterRawInputDevices(RAWINPUTDEVICE[] pRawInputDevices, uint uiNumDevices, uint cbSize);
