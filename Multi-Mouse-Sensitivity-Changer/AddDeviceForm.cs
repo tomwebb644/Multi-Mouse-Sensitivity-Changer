@@ -12,6 +12,12 @@ namespace MultiMouseSensitivityChanger
         readonly TextBox _nameTextBox;
         readonly TextBox _pathTextBox;
         readonly NumericUpDown _speedSelector;
+        readonly NumericUpDown _scrollLinesSelector;
+        readonly NumericUpDown _scrollCharsSelector;
+        readonly CheckBox _enhancePrecisionCheckBox;
+        readonly CheckBox _swapButtonsCheckBox;
+        readonly CheckBox _applyOnStartupCheckBox;
+        readonly CheckBox _autoApplyCheckBox;
         readonly Label _statusLabel;
         readonly Panel _colorPreview;
         Color _selectedColor = Color.Gray;
@@ -26,38 +32,64 @@ namespace MultiMouseSensitivityChanger
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            AutoSize = true;
-            AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            MinimumSize = new Size(460, 0);
+            ClientSize = new Size(720, 560);
+            MinimumSize = new Size(720, 560);
 
             var layout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 5,
+                Padding = new Padding(12)
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            var identityGroup = new GroupBox { Text = "Device identity", Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+            var identityLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 7,
-                Padding = new Padding(12),
+                RowCount = 3,
+                Padding = new Padding(10),
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink
             };
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
-            for (int i = 0; i < layout.RowCount; i++)
-            {
-                layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            }
+            identityLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
+            identityLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
 
-            layout.Controls.Add(new Label { Text = "Step 1: Capture the device path", AutoSize = true }, 0, 0);
+            identityLayout.Controls.Add(new Label { Text = "Device path", AutoSize = true }, 0, 0);
             _pathTextBox = new TextBox { Dock = DockStyle.Fill };
-            layout.Controls.Add(_pathTextBox, 1, 0);
-            var captureButton = new Button { Text = "Capture from movement", Dock = DockStyle.Left };
+            identityLayout.Controls.Add(_pathTextBox, 1, 0);
+            var capturePanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, AutoSize = true, WrapContents = false };
+            var captureButton = new Button { Text = "Capture from movement", AutoSize = true };
             captureButton.Click += (_, __) => BeginCapture();
-            layout.Controls.Add(captureButton, 1, 1);
+            capturePanel.Controls.Add(captureButton);
+            capturePanel.Controls.Add(new Label { Text = "Move the device after clicking.", AutoSize = true, ForeColor = Color.DimGray, Padding = new Padding(6, 6, 0, 0) });
+            identityLayout.Controls.Add(capturePanel, 1, 1);
 
-            layout.Controls.Add(new Label { Text = "Step 2: Name", AutoSize = true }, 0, 2);
+            identityLayout.Controls.Add(new Label { Text = "Name", AutoSize = true }, 0, 2);
             _nameTextBox = new TextBox { Dock = DockStyle.Fill };
-            layout.Controls.Add(_nameTextBox, 1, 2);
+            identityLayout.Controls.Add(_nameTextBox, 1, 2);
+            identityGroup.Controls.Add(identityLayout);
 
-            layout.Controls.Add(new Label { Text = "Step 3: Default speed", AutoSize = true }, 0, 3);
+            var pointerGroup = new GroupBox { Text = "Pointer settings", Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+            var pointerLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 3,
+                Padding = new Padding(10),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink
+            };
+            pointerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
+            pointerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
+
+            pointerLayout.Controls.Add(new Label { Text = "Speed", AutoSize = true }, 0, 0);
             _speedSelector = new NumericUpDown
             {
                 Minimum = 1,
@@ -66,23 +98,92 @@ namespace MultiMouseSensitivityChanger
                 Dock = DockStyle.Left,
                 Width = 80
             };
-            layout.Controls.Add(_speedSelector, 1, 3);
-            var testButton = new Button { Text = "Test speed", Dock = DockStyle.Left };
-            testButton.Click += (_, __) => TestSpeed();
-            layout.Controls.Add(testButton, 1, 4);
+            var speedPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, AutoSize = true, WrapContents = false };
+            speedPanel.Controls.Add(_speedSelector);
+            var testButton = new Button { Text = "Apply now", AutoSize = true, Margin = new Padding(12, 0, 0, 0) };
+            testButton.Click += (_, __) => TestSettings();
+            speedPanel.Controls.Add(testButton);
+            pointerLayout.Controls.Add(speedPanel, 1, 0);
 
-            layout.Controls.Add(new Label { Text = "Icon color", AutoSize = true }, 0, 5);
+            _enhancePrecisionCheckBox = new CheckBox { Text = "Enhance pointer precision", AutoSize = true };
+            pointerLayout.Controls.Add(_enhancePrecisionCheckBox, 1, 1);
+
+            _swapButtonsCheckBox = new CheckBox { Text = "Swap primary and secondary buttons", AutoSize = true };
+            pointerLayout.Controls.Add(_swapButtonsCheckBox, 1, 2);
+            pointerGroup.Controls.Add(pointerLayout);
+
+            var scrollGroup = new GroupBox { Text = "Scrolling", Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+            var scrollLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 2,
+                Padding = new Padding(10),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink
+            };
+            scrollLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
+            scrollLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
+
+            scrollLayout.Controls.Add(new Label { Text = "Vertical wheel lines", AutoSize = true }, 0, 0);
+            _scrollLinesSelector = new NumericUpDown
+            {
+                Minimum = 1,
+                Maximum = 100,
+                Value = 3,
+                Dock = DockStyle.Left,
+                Width = 80
+            };
+            scrollLayout.Controls.Add(_scrollLinesSelector, 1, 0);
+
+            scrollLayout.Controls.Add(new Label { Text = "Horizontal wheel chars", AutoSize = true }, 0, 1);
+            _scrollCharsSelector = new NumericUpDown
+            {
+                Minimum = 1,
+                Maximum = 100,
+                Value = 3,
+                Dock = DockStyle.Left,
+                Width = 80
+            };
+            scrollLayout.Controls.Add(_scrollCharsSelector, 1, 1);
+            scrollGroup.Controls.Add(scrollLayout);
+
+            var behaviorGroup = new GroupBox { Text = "Behavior & icon", Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+            var behaviorLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 3,
+                Padding = new Padding(10),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink
+            };
+            behaviorLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
+            behaviorLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
+
+            behaviorLayout.Controls.Add(new Label { Text = "Icon color", AutoSize = true }, 0, 0);
             var colorButton = new Button { Text = "Choose color", AutoSize = true };
             colorButton.Click += (_, __) => ChooseColor();
             var colorPanel = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, Dock = DockStyle.Fill, WrapContents = false, AutoSize = true };
             _colorPreview = new Panel { Width = 32, Height = 32, BackColor = _selectedColor, BorderStyle = BorderStyle.FixedSingle, Margin = new Padding(8, 0, 0, 0) };
             colorPanel.Controls.Add(colorButton);
             colorPanel.Controls.Add(_colorPreview);
-            layout.Controls.Add(colorPanel, 1, 5);
+            behaviorLayout.Controls.Add(colorPanel, 1, 0);
+
+            _applyOnStartupCheckBox = new CheckBox { Text = "Apply these settings on app startup", AutoSize = true };
+            behaviorLayout.Controls.Add(_applyOnStartupCheckBox, 1, 1);
+
+            _autoApplyCheckBox = new CheckBox { Text = "Apply automatically when this device is used", AutoSize = true };
+            behaviorLayout.Controls.Add(_autoApplyCheckBox, 1, 2);
+            behaviorGroup.Controls.Add(behaviorLayout);
 
             _statusLabel = new Label { Text = "Move your device to capture its path.", AutoSize = true, ForeColor = Color.DimGray };
-            layout.Controls.Add(_statusLabel, 0, 6);
-            layout.SetColumnSpan(_statusLabel, 2);
+
+            layout.Controls.Add(identityGroup);
+            layout.Controls.Add(pointerGroup);
+            layout.Controls.Add(scrollGroup);
+            layout.Controls.Add(behaviorGroup);
+            layout.Controls.Add(_statusLabel);
 
             var buttons = new FlowLayoutPanel
             {
@@ -111,11 +212,25 @@ namespace MultiMouseSensitivityChanger
                 _pathTextBox.Text = existing.DevicePath;
                 _speedSelector.Value = existing.Speed;
                 _selectedColor = existing.IconColor;
+                _enhancePrecisionCheckBox.Checked = existing.EnhancePointerPrecision;
+                _scrollLinesSelector.Value = existing.VerticalScrollLines;
+                _scrollCharsSelector.Value = existing.HorizontalScrollChars;
+                _swapButtonsCheckBox.Checked = existing.SwapButtons;
+                _applyOnStartupCheckBox.Checked = existing.ApplyOnStartup;
+                _autoApplyCheckBox.Checked = existing.AutoApply;
                 _colorPreview.BackColor = _selectedColor;
                 Text = "Edit device";
             }
             else
             {
+                var defaults = Program.GetSystemMouseSettings();
+                _speedSelector.Value = defaults.Speed;
+                _enhancePrecisionCheckBox.Checked = defaults.EnhancePointerPrecision;
+                _scrollLinesSelector.Value = defaults.VerticalScrollLines;
+                _scrollCharsSelector.Value = defaults.HorizontalScrollChars;
+                _swapButtonsCheckBox.Checked = defaults.SwapButtons;
+                _applyOnStartupCheckBox.Checked = false;
+                _autoApplyCheckBox.Checked = true;
                 _selectedColor = GetDefaultColor(existingColors);
                 _colorPreview.BackColor = _selectedColor;
             }
@@ -140,10 +255,11 @@ namespace MultiMouseSensitivityChanger
             Program.EnsureRawInputRegistration();
         }
 
-        void TestSpeed()
+        void TestSettings()
         {
-            Program.NativeMethods.SetMouseSpeed((int)_speedSelector.Value);
-            _statusLabel.Text = $"Applied speed {(int)_speedSelector.Value} for testing.";
+            var preview = BuildProfileFromForm();
+            Program.ApplyProfileSettings(preview, applySpeed: true, forceSpeed: true);
+            _statusLabel.Text = "Applied these settings for preview.";
         }
 
         void ChooseColor()
@@ -174,7 +290,25 @@ namespace MultiMouseSensitivityChanger
                 return;
             }
 
-            NewProfile = new Program.DeviceProfile(_nameTextBox.Text.Trim(), _pathTextBox.Text.Trim(), (int)_speedSelector.Value, _selectedColor);
+            var profile = BuildProfileFromForm();
+            profile.Name = _nameTextBox.Text.Trim();
+            profile.DevicePath = _pathTextBox.Text.Trim();
+            NewProfile = profile;
+        }
+
+        Program.DeviceProfile BuildProfileFromForm()
+        {
+            return new Program.DeviceProfile(
+                _nameTextBox.Text.Trim(),
+                _pathTextBox.Text.Trim(),
+                (int)_speedSelector.Value,
+                _selectedColor,
+                _enhancePrecisionCheckBox.Checked,
+                (int)_scrollLinesSelector.Value,
+                (int)_scrollCharsSelector.Value,
+                _swapButtonsCheckBox.Checked,
+                _applyOnStartupCheckBox.Checked,
+                _autoApplyCheckBox.Checked);
         }
 
         Color GetDefaultColor(IEnumerable<Color> existingColors)
